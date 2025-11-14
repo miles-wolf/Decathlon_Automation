@@ -40,7 +40,7 @@ def get_group_sql():
 
 
 
-def dfs_to_ctes_mogrify_auto(cur, *dfs, **named_dfs):
+def dfs_to_sql_ctes(cur, *dfs, **named_dfs):
     #author kavin
     """
     Convert multiple pandas DataFrames into multiple PostgreSQL CTEs using psycopg2 mogrify,

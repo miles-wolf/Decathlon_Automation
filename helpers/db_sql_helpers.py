@@ -1,0 +1,114 @@
+import psycopg2
+import pandas as pd
+import random
+import numpy as np
+import inspect
+
+def get_ampm_jobs_sql():
+ #author kavin
+    """
+    Return a SQL query to retrieve all am/pm jobs from camp.job
+    """
+    
+    sql = """
+    SELECT j.id as job_id,
+           j.code as job_code,
+           j.name as job_name,
+           j.min_staff_assigned,
+           j.normal_staff_assigned,
+           j.max_staff_assigned,
+           j.job_description,
+           j.priority
+    FROM camp.job as j
+    WHERE 1 = 1
+        AND j.job_type = 'am/pm';
+    ;
+    """
+    return sql
+
+
+def get_roles_sql():
+    #author kavin
+
+    """
+    Return a SQL query to retrieve all am/pm jobs from camp.role
+    """
+    
+    sql = """
+    SELECT r.*
+    FROM camp.role as r
+    WHERE 1 = 1
+        --
+    ;
+    """
+    return sql
+
+def get_group_sql():
+    #author kavin
+    sql = """
+    SELECT g.*
+    FROM camp.group as g
+    WHERE 1 = 1
+        --
+    ;
+    """
+    return sql
+
+
+
+
+def dfs_to_ctes_mogrify_auto(cur, *dfs, **named_dfs):
+    #author kavin
+    """
+    Convert multiple pandas DataFrames into multiple PostgreSQL CTEs using psycopg2 mogrify,
+    automatically inferring DataFrame variable names from the caller's local scope.
+    """
+
+    caller_locals = inspect.currentframe().f_back.f_locals
+    cte_map = {}
+
+    # 1. Add explicitly named DFs
+    for cte_name, df in named_dfs.items():
+        cte_map[cte_name] = df
+
+    # 2. Infer names for positional DFs
+    for df in dfs:
+        inferred = None
+        for var_name, var_val in caller_locals.items():
+            if var_val is df:
+                inferred = var_name
+                break
+        if inferred is None:
+            raise ValueError("Unable to infer DataFrame name, pass explicitly.")
+        cte_map[inferred] = df
+
+    # 3. Build each CTE block
+    cte_blocks = []
+
+    for cte_name, df in cte_map.items():
+
+        columns = ", ".join(df.columns)
+
+        # Generate one placeholder per column
+        placeholders = "(" + ", ".join(["%s"] * df.shape[1]) + ")"
+
+        rows = [tuple(x) for x in df.to_numpy()]
+
+        # mogrify each row correctly (no extra parentheses)
+        values_sql_list = [
+            cur.mogrify(placeholders, row).decode()
+            for row in rows
+        ]
+
+        values_sql = ",\n        ".join(values_sql_list)
+
+        cte_block = f"""
+{cte_name} ({columns}) AS (
+    VALUES
+        {values_sql}
+)"""
+
+        cte_blocks.append(cte_block.strip())
+        full_sql = "WITH\n" + ",\n\n".join(cte_blocks)
+    return full_sql
+

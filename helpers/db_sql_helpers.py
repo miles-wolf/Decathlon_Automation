@@ -8,22 +8,28 @@ def get_roles_sql():
     #author kavin
 
     """
-    Return a SQL query to retrieve all am/pm jobs from camp.role
+    Return a SQL query to retrieve all rows of roles from camp.role
     """
     
     sql = """
-    SELECT r.*
+    SELECT r.id as role_id, 
+           r.name,
+           r.created_at
     FROM camp.role as r
     WHERE 1 = 1
-        --
     ;
     """
     return sql
 
 def get_group_sql():
     #author kavin
+    """
+    Return a SQL query to retrieve all rows of groups from camp.group
+    """
     sql = """
-    SELECT g.*
+    SELECT g.id as group_id,
+           g.group_number,
+           g.created_at
     FROM camp.group as g
     WHERE 1 = 1
         --

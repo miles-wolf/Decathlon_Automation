@@ -45,6 +45,30 @@ def dfs_to_sql_ctes(cur, *dfs, **named_dfs):
     """
     Convert multiple pandas DataFrames into multiple PostgreSQL CTEs using psycopg2 mogrify,
     automatically inferring DataFrame variable names from the caller's local scope.
+
+    Usage:
+        # auto infer names from variables df1, df2
+        dfs_to_ctes_mogrify_auto(cur, df1, df2)
+
+        # OR explicitly name some
+        dfs_to_ctes_mogrify_auto(cur, staff=df_staff, jobs=df_jobs)
+
+        # OR mix both
+        dfs_to_ctes_mogrify_auto(cur, df_staff, jobs=df_jobs)
+
+    Parameters
+    ----------
+    cur : psycopg2 cursor
+        Cursor used to mogrify values.
+    *dfs : list of pandas.DataFrame
+        DataFrames whose CTE names will be auto-inferred.
+    **named_dfs : dict
+        Explicit CTE_name=DataFrame mappings.
+
+    Returns
+    -------
+    str
+        A SQL string starting with WITH ... containing all CTE blocks.
     """
 
     caller_locals = inspect.currentframe().f_back.f_locals

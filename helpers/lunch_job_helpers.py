@@ -86,6 +86,7 @@ def get_eligible_staff_sql(cur, session_id):
     WHERE 1 = 1
       AND sts.session_id = %(session_id)s
       AND r.id IN (1005, 1006)  -- JC's and Counselors
+      order by group_id asc, role_id asc
     --GROUP BY 1,2,3
     ;
     """

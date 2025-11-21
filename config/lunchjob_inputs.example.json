@@ -4,8 +4,11 @@
     "1001": [1111, 1151],
     "1009": [1053, 1099]
   },
-  "staff_game_days": [],
+  "staff_game_days": [
+    "thursday"
+  ],
   "tie_dye_days": [
+    "tuesday",
     "wednesday"
   ],
   "tie_dye_staff": [
@@ -44,5 +47,6 @@
       [9003, 1029, "monday"],
       [9002, 1077, "wednesday"]
     ]
-  }
+  },
+  "verbose": true
 }

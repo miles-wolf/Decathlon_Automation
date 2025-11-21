@@ -1,7 +1,7 @@
 {
   "db_name": "postgres",
   "user": "read_only.ffnhexmowaiglsmmbycm",
-  "password": "ilikedoingdonuts",
+  "password": "glazedwithjelly",
   "host": "aws-0-us-west-1.pooler.supabase.com",
   "port": "5432"
 }

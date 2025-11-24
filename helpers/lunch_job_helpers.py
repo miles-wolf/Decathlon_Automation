@@ -1027,7 +1027,7 @@ def build_lunch_job_assignments(
     # ----------------------------------------------------------------------
     df_final_assignments_enriched = df_final_assignments.merge(
         df_staff_balanced[
-            ["staff_id", "staff_name", "group_id", "actual_assignment"]
+            ["staff_id", "staff_name", "group_id", "role_id", "actual_assignment"]
         ],
         on="staff_id",
         how="left"
@@ -1039,9 +1039,11 @@ def build_lunch_job_assignments(
 
     # Reorder columns for better readability
     column_order = [
-        'day_name', 
+        'day_name',
+        'day_sort',
         'staff_id', 
         'staff_name',
+        'role_id',
         'actual_assignment', 
         'group_id', 
         'job_id', 
@@ -1063,8 +1065,6 @@ def build_lunch_job_assignments(
         by=['day_sort', 'group_id', 'staff_name']
     ).reset_index(drop=True)
 
-    # Drop the helper column
-    df_final_assignments_enriched = df_final_assignments_enriched.drop(columns=['day_sort'])
     # ----------------------------------------------------------------------
     # 9. Return (debug or normal)
     # ----------------------------------------------------------------------

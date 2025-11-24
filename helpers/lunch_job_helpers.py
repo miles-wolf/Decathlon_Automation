@@ -148,6 +148,7 @@ def assign_group_patterns(df_eligible_staff):
     return unique_groups
 
 
+##section code author miles
 def balance_schedule_for_job(df_staff_clean, staff_ids_for_job, job_name):
     ##code author miles
     """
@@ -196,6 +197,7 @@ def balance_schedule_for_job(df_staff_clean, staff_ids_for_job, job_name):
     return df_staff_clean
 
 
+
 def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_days, tie_dye_staff, 
                                   df_staff_clean, df_days, df_lunch_jobs, 
                                   staff_to_remove=None, staff_to_add=None, 
@@ -236,11 +238,14 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
     """
     # Create a copy to avoid modifying original
     df_staff_clean = df_staff_clean.copy()
+
+    print("\n" + "="*80)
     
     # Remove staff from eligible list
     if staff_to_remove:
         df_staff_clean = df_staff_clean[~df_staff_clean['staff_id'].isin(staff_to_remove)].copy()
         print(f"Removed {len(staff_to_remove)} staff from eligible list")
+
     
     # Add staff to eligible list
     if staff_to_add:
@@ -261,6 +266,13 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
         print(f"Added {len(staff_to_add)} staff to eligible list")
     
     hardcoded_assignments = []
+    
+    # Validate that tie dye days and staff game days don't overlap
+    if staff_game_days and tie_dye_days:
+        overlapping_days = set(d.lower() for d in staff_game_days) & set(d.lower() for d in tie_dye_days)
+        if overlapping_days:
+            print(f"\n⚠️  WARNING: Tie Dye and Staff Game are scheduled on the same day(s): {', '.join(overlapping_days)}")
+            print("Staff Game will take priority and Tie Dye will be skipped on these days.\n")
     
     # Process staff game days first - assign all staff to staff game
     if staff_game_days:
@@ -313,38 +325,99 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
                             'job_name': job_info['job_name']
                         })
     
+    ## section code author miles (tie dye assignment balancing and group flipping)
     # Process tie dye assignments (staff work on their A/B pattern days only)
     if tie_dye_days and tie_dye_staff:
         tie_dye_job_id = 1045  # Tie Dye job ID
         tie_dye_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == tie_dye_job_id].iloc[0]
         
-        # For each tie dye day, assign staff whose pattern matches that day
-        for day in tie_dye_days:
-            if staff_game_days and day in staff_game_days:
-                continue  # Skip if it's a staff game day
-            
-            # Determine the pattern for this day
+        # Step 1: Determine which days tie dye is happening and assign patterns to those days
+        tie_dye_day_patterns = {}
+        non_staff_game_tie_dye_days = [day for day in tie_dye_days if not (staff_game_days and day in staff_game_days)]
+        
+        for day in non_staff_game_tie_dye_days:
+            # Determine the pattern for this day (Mon/Wed: A, Tues/Thurs: B)
             day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+            tie_dye_day_patterns[day] = day_pattern
+        
+        print(f"\nTie Dye Day Patterns: {tie_dye_day_patterns}")
+        
+        # Step 2: Assign staff to their corresponding day based on their pattern assignment
+        tie_dye_assignments_by_day = {day: [] for day in non_staff_game_tie_dye_days}
+        
+        for staff_id in tie_dye_staff:
+            staff_matches = df_staff_clean[df_staff_clean['staff_id'] == staff_id]
+            if len(staff_matches) == 0:
+                print(f"Warning: Staff {staff_id} not found in eligible staff list (may have been removed)")
+                continue
+            staff_row = staff_matches.iloc[0]
+            staff_pattern = staff_row['actual_assignment']
             
-            # Assign each staff member if they match the day's pattern
-            for staff_id in tie_dye_staff:
-                staff_matches = df_staff_clean[df_staff_clean['staff_id'] == staff_id]
-                if len(staff_matches) == 0:
-                    print(f"Warning: Staff {staff_id} not found in eligible staff list (may have been removed)")
-                    continue
-                staff_row = staff_matches.iloc[0]
-                staff_pattern = staff_row['actual_assignment']
-                
-                # Only assign if staff's pattern matches the day's pattern
+            # Assign staff to days where their pattern matches
+            for day, day_pattern in tie_dye_day_patterns.items():
                 if staff_pattern == day_pattern:
-                    hardcoded_assignments.append({
-                        'day_name': day,
-                        'staff_id': staff_id,
-                        'job_id': tie_dye_job_id,
-                        'job_code': tie_dye_job_info['job_code'],
-                        'job_name': tie_dye_job_info['job_name']
-                    })
+                    tie_dye_assignments_by_day[day].append(staff_id)
+        
+        # Step 3: Balance the staff between the two tie dye days
+        if len(non_staff_game_tie_dye_days) == 2:
+            day1, day2 = non_staff_game_tie_dye_days[0], non_staff_game_tie_dye_days[1]
+            count1, count2 = len(tie_dye_assignments_by_day[day1]), len(tie_dye_assignments_by_day[day2])
+            
+            print(f"Before balancing: {day1}={count1} staff, {day2}={count2} staff")
+            
+            # If not even, move staff from the larger group to the smaller
+            if count1 != count2:
+                larger_day = day1 if count1 > count2 else day2
+                smaller_day = day2 if count1 > count2 else day1
+                larger_pattern = tie_dye_day_patterns[larger_day]
+                smaller_pattern = tie_dye_day_patterns[smaller_day]
+                
+                # Calculate how many to move
+                num_to_move = abs(count1 - count2) // 2
+                
+                # Get staff from larger day
+                staff_to_move = tie_dye_assignments_by_day[larger_day][:num_to_move]
+                
+                print(f"Moving {num_to_move} staff from {larger_day} to {smaller_day}")
+                
+                # Step 4: Move staff and flip entire group's patterns
+                for staff_id in staff_to_move:
+                    staff_row = df_staff_clean[df_staff_clean['staff_id'] == staff_id].iloc[0]
+                    group_id = staff_row['group_id']
+                    original_pattern = staff_row['actual_assignment']
+                    
+                    print(f"  Moving staff {staff_id} (group {group_id}, pattern {original_pattern}) from {larger_day} to {smaller_day}")
+                    print(f"    Flipping entire group {group_id}: A <-> B")
+                    
+                    # Flip all staff in the same group (A becomes B, B becomes A)
+                    group_mask = df_staff_clean['group_id'] == group_id
+                    df_staff_clean.loc[group_mask, 'actual_assignment'] = df_staff_clean.loc[group_mask, 'actual_assignment'].apply(
+                        lambda x: 'B' if x == 'A' else 'A'
+                    )
+                    df_staff_clean.loc[group_mask, 'pattern_exception'] = True
+                    
+                    # Update tie dye assignments - move the staff from larger day to smaller day
+                    tie_dye_assignments_by_day[larger_day].remove(staff_id)
+                    tie_dye_assignments_by_day[smaller_day].append(staff_id)
+                
+                count1, count2 = len(tie_dye_assignments_by_day[day1]), len(tie_dye_assignments_by_day[day2])
+                print(f"After balancing: {day1}={count1} staff, {day2}={count2} staff")
+        
+        # Create the final assignments
+        for day, staff_ids_on_day in tie_dye_assignments_by_day.items():
+            for staff_id in staff_ids_on_day:
+                hardcoded_assignments.append({
+                    'day_name': day,
+                    'staff_id': staff_id,
+                    'job_id': tie_dye_job_id,
+                    'job_code': tie_dye_job_info['job_code'],
+                    'job_name': tie_dye_job_info['job_name']
+                })
     
+    # Process custom job assignments (fixed indentation - should be outside tie_dye block)
+    if custom_job_assignments:
+        # Handle 'all_days' assignments (staff work this job on all their pattern days)
+        if 'all_days' in custom_job_assignments and custom_job_assignments['all_days']:
             for job_id, staff_ids in custom_job_assignments['all_days'].items():
                 job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == job_id].iloc[0]
                 
@@ -385,9 +458,234 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
                     'job_name': job_info['job_name']
                 })
     
+    # Create dataframe and check for duplicates
     df_hardcoded = pd.DataFrame(hardcoded_assignments)
     
+    # Detect and warn about duplicate assignments (same staff, same day, multiple jobs)
+    if len(df_hardcoded) > 0:
+        duplicates = df_hardcoded.groupby(['day_name', 'staff_id']).size()
+        duplicates = duplicates[duplicates > 1]
+        
+        if len(duplicates) > 0:
+            print(f"\n⚠️  WARNING: Found {len(duplicates)} staff with multiple job assignments on the same day!")
+            for (day, staff_id), count in duplicates.items():
+                staff_jobs = df_hardcoded[(df_hardcoded['day_name'] == day) & (df_hardcoded['staff_id'] == staff_id)]
+                job_names = staff_jobs['job_name'].tolist()
+                print(f"   Staff {staff_id} on {day}: {count} jobs - {job_names}")
+            
+            # Remove duplicates - keep only the first assignment per staff per day
+            print(f"\n   Removing duplicate assignments (keeping first assignment per staff per day)...")
+            df_hardcoded = df_hardcoded.drop_duplicates(subset=['day_name', 'staff_id'], keep='first')
+            print(f"   Reduced to {len(df_hardcoded)} unique assignments\n")
+    
     return df_hardcoded, df_staff_clean
+
+##section code author miles
+def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, df_lunch_jobs):
+    """
+    Ensures that Counselor Activity (job_id: 1077) has at least one counselor (role_id: 1005) 
+    assigned on each day. If not, swaps a JC with a counselor from another job.
+    
+    Parameters:
+    - df_all_assignments: dataframe of all assignments
+    - df_staff_clean: cleaned staff dataframe with role information
+    - df_lunch_jobs: lunch jobs dataframe
+    
+    Returns:
+    - df_all_assignments: updated assignments with counselor requirement met
+    """
+    COUNSELOR_ACTIVITY_JOB_ID = 1077
+    COUNSELOR_ROLE_ID = 1005
+    JUNIOR_COUNSELOR_ROLE_ID = 1006
+    
+    # Check if counselor activity exists in assignments
+    counselor_activity_assignments = df_all_assignments[
+        df_all_assignments['job_id'] == COUNSELOR_ACTIVITY_JOB_ID
+    ]
+    
+    if len(counselor_activity_assignments) == 0:
+        return df_all_assignments  # No counselor activity assignments to check
+    
+    # Get unique days where counselor activity occurs
+    ca_days = counselor_activity_assignments['day_name'].unique()
+    
+    for day in ca_days:
+        # Get counselor activity assignments for this day
+        day_ca_assignments = df_all_assignments[
+            (df_all_assignments['day_name'] == day) & 
+            (df_all_assignments['job_id'] == COUNSELOR_ACTIVITY_JOB_ID)
+        ]
+        
+        # Get staff IDs assigned to counselor activity this day
+        ca_staff_ids = day_ca_assignments['staff_id'].tolist()
+        
+        # Check roles of assigned staff
+        ca_staff_roles = df_staff_clean[df_staff_clean['staff_id'].isin(ca_staff_ids)]
+        counselor_count = len(ca_staff_roles[ca_staff_roles['role_id'] == COUNSELOR_ROLE_ID])
+        
+        if counselor_count == 0:
+            print(f"\n⚠️  Warning: Counselor Activity on {day} has no counselors!")
+            
+            # Find a JC on counselor activity to swap
+            jcs_on_ca = ca_staff_roles[ca_staff_roles['role_id'] == JUNIOR_COUNSELOR_ROLE_ID]
+            
+            if len(jcs_on_ca) == 0:
+                print(f"   ERROR: No staff to swap on Counselor Activity for {day}")
+                continue
+            
+            jc_to_swap = jcs_on_ca.iloc[0]
+            jc_id = jc_to_swap['staff_id']
+            jc_pattern = jc_to_swap['actual_assignment']
+            
+            # Find a counselor on a different job this day with the same pattern
+            day_assignments = df_all_assignments[df_all_assignments['day_name'] == day]
+            other_job_staff = day_assignments[day_assignments['job_id'] != COUNSELOR_ACTIVITY_JOB_ID]['staff_id'].tolist()
+            
+            counselors_on_other_jobs = df_staff_clean[
+                (df_staff_clean['staff_id'].isin(other_job_staff)) &
+                (df_staff_clean['role_id'] == COUNSELOR_ROLE_ID) &
+                (df_staff_clean['actual_assignment'] == jc_pattern)
+            ]
+            
+            if len(counselors_on_other_jobs) == 0:
+                print(f"   ERROR: No counselors available to swap on {day}")
+                continue
+            
+            counselor_to_swap = counselors_on_other_jobs.iloc[0]
+            counselor_id = counselor_to_swap['staff_id']
+            
+            # Get the counselor's current job
+            counselor_current_job = day_assignments[day_assignments['staff_id'] == counselor_id].iloc[0]
+            counselor_job_id = counselor_current_job['job_id']
+            counselor_job_name = counselor_current_job['job_name']
+            
+            print(f"   Swapping: JC {jc_id} (Counselor Activity) ↔ Counselor {counselor_id} ({counselor_job_name})")
+            
+            # Perform the swap
+            # Update JC's job to counselor's job
+            df_all_assignments.loc[
+                (df_all_assignments['day_name'] == day) & 
+                (df_all_assignments['staff_id'] == jc_id),
+                ['job_id', 'job_code', 'job_name']
+            ] = [counselor_job_id, counselor_current_job['job_code'], counselor_job_name]
+            
+            # Update counselor's job to counselor activity
+            ca_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].iloc[0]
+            df_all_assignments.loc[
+                (df_all_assignments['day_name'] == day) & 
+                (df_all_assignments['staff_id'] == counselor_id),
+                ['job_id', 'job_code', 'job_name']
+            ] = [COUNSELOR_ACTIVITY_JOB_ID, ca_job_info['job_code'], ca_job_info['job_name']]
+            
+            print(f"   ✓ Fixed: Counselor Activity now has counselor {counselor_id}")
+    
+    return df_all_assignments
+
+
+##section code author miles
+def print_assignment_summary(df_hardcoded_assignments, df_all_assignments, df_days, df_lunch_jobs):
+    """
+    Print detailed summary of hardcoded assignments and job staffing checklist.
+    
+    Parameters:
+    - df_hardcoded_assignments: dataframe of hardcoded assignments
+    - df_all_assignments: dataframe of all assignments (hardcoded + random)
+    - df_days: days dataframe
+    - df_lunch_jobs: lunch jobs dataframe
+    """
+    # Print hardcoded assignments summary
+    print(f"\n{'='*80}")
+    print(f"HARDCODED ASSIGNMENTS: {len(df_hardcoded_assignments)} records")
+    print(f"{'='*80}")
+    
+    if len(df_hardcoded_assignments) > 0:
+        # Group by job and day to show summary
+        hardcoded_summary = df_hardcoded_assignments.groupby(['job_name', 'day_name'])['staff_id'].count().reset_index()
+        hardcoded_summary.columns = ['Job', 'Day', 'Staff Count']
+        print("\nHardcoded Assignments by Job and Day:")
+        for _, row in hardcoded_summary.iterrows():
+            print(f"  {row['Job']:30s} | {row['Day']:10s} | {row['Staff Count']} staff")
+        
+        # Show staff details
+        print("\nDetailed Staff Assignments:")
+        
+        # Sort days in order
+        day_order = ['monday', 'tuesday', 'wednesday', 'thursday']
+        days_present = [d for d in day_order if d in df_hardcoded_assignments['day_name'].str.lower().unique()]
+        
+        for day in days_present:
+            day_assignments = df_hardcoded_assignments[df_hardcoded_assignments['day_name'].str.lower() == day]
+            print(f"\n  {day.upper()}:")
+            for job_name in day_assignments['job_name'].unique():
+                job_staff = day_assignments[day_assignments['job_name'] == job_name]['staff_id'].tolist()
+                
+                # For Staff Game, just show count, not all IDs
+                if job_name == 'Staff Game':
+                    print(f"    {job_name:30s}: {len(job_staff)} staff (all staff assigned)")
+                else:
+                    print(f"    {job_name:30s}: {len(job_staff)} staff - IDs: {job_staff}")
+    else:
+        print("  No hardcoded assignments")
+    
+    print(f"\n{'='*80}\n")
+    
+    # Print job staffing checklist
+    print(f"\n{'='*80}")
+    print("JOB STAFFING CHECKLIST")
+    print(f"{'='*80}")
+    
+    for day in df_days['day_name'].unique():
+        day_assignments = df_all_assignments[df_all_assignments['day_name'] == day]
+        
+        # Skip staff game days (everyone is assigned to staff game)
+        if len(day_assignments[day_assignments['job_id'] == 1100]) > 0:
+            print(f"\n{day.upper()}: Staff Game (all staff assigned)")
+            continue
+        
+        print(f"\n{day.upper()}:")
+        
+        # Get all jobs that appear on this day
+        day_jobs = day_assignments.groupby(['job_id', 'job_name', 'assignment_type']).size().reset_index(name='count')
+        
+        # Get normal assignments per job
+        normal_assignments = day_assignments[day_assignments['assignment_type'] == 'normal'].groupby('job_id').size().to_dict()
+        overflow_assignments = day_assignments[day_assignments['assignment_type'] == 'overflow'].groupby('job_id').size().to_dict()
+        hardcoded_assignments_day = day_assignments[day_assignments['assignment_type'] == 'hardcoded'].groupby('job_id').size().to_dict()
+        
+        # Merge with jobs info
+        day_jobs_info = df_lunch_jobs.copy()
+        
+        for _, job in day_jobs_info.iterrows():
+            job_id = job['job_id']
+            job_name = job['job_name']
+            normal_needed = int(job['normal_staff_assigned']) if pd.notna(job['normal_staff_assigned']) else 0
+            
+            # Skip excluded jobs that aren't in assignments
+            if job_id not in day_assignments['job_id'].values:
+                continue
+            
+            normal_count = normal_assignments.get(job_id, 0)
+            overflow_count = overflow_assignments.get(job_id, 0)
+            hardcoded_count = hardcoded_assignments_day.get(job_id, 0)
+            total_count = normal_count + overflow_count + hardcoded_count
+            
+            # Determine status
+            if hardcoded_count > 0:
+                status = "✓ HARDCODED"
+            elif normal_count >= normal_needed:
+                status = "✓ COMPLETE"
+            else:
+                status = f"✗ SHORT ({normal_count}/{normal_needed})"
+            
+            print(f"  {job_name:30s} | {status:20s} | Normal: {normal_count}/{normal_needed}", end="")
+            
+            if overflow_count > 0:
+                print(f" | Overflow: +{overflow_count}")
+            else:
+                print()
+    
+    print(f"\n{'='*80}\n")
+
 
 def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcoded):
     """
@@ -529,6 +827,23 @@ def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcode
         df_hardcoded['assignment_type'] = 'hardcoded'
         df_all_assignments = pd.concat([df_hardcoded, df_all_assignments], ignore_index=True)
     
+    # Validate and fix counselor activity assignments (job_id: 1077)
+    df_all_assignments = ensure_counselor_on_counselor_activity(
+        df_all_assignments, df_staff_clean, df_lunch_jobs
+    )
+    
+    # Final validation: Check for any duplicate assignments (same staff, same day)
+    if len(df_all_assignments) > 0:
+        final_duplicates = df_all_assignments.groupby(['day_name', 'staff_id']).size()
+        final_duplicates = final_duplicates[final_duplicates > 1]
+        
+        if len(final_duplicates) > 0:
+            print(f"\n⚠️  CRITICAL WARNING: {len(final_duplicates)} staff have multiple assignments on the same day!")
+            for (day, staff_id), count in final_duplicates.items():
+                staff_jobs = df_all_assignments[(df_all_assignments['day_name'] == day) & (df_all_assignments['staff_id'] == staff_id)]
+                job_names = staff_jobs['job_name'].tolist()
+                print(f"   Staff {staff_id} on {day}: {count} jobs - {job_names}")
+    
     return df_all_assignments
 
 
@@ -543,7 +858,8 @@ def build_lunch_job_assignments(
     staff_to_remove=None,
     staff_to_add=None,
     custom_job_assignments=None,
-    debug=False
+    debug=False,
+    verbose=False
 ):
     """
     Master wrapper for generating lunch job assignments.
@@ -555,6 +871,7 @@ def build_lunch_job_assignments(
     and returns df_final_assignments_enriched.
 
     If debug=True, returns a dictionary of all intermediate DataFrames.
+    If verbose=True, prints detailed assignment summaries and staffing checklists.
     """
 
     # ----------------------------------------------------------------------
@@ -688,10 +1005,6 @@ def build_lunch_job_assignments(
     staff_to_add=staff_to_add,
     custom_job_assignments=custom_job_assignments
      )
-    
-    print(f"Hardcoded assignments: {len(df_hardcoded_assignments)} records")
-    print("\nHardcoded assignments:")
-
 
     # ----------------------------------------------------------------------
     # 6. RANDOM ASSIGNMENTS
@@ -702,6 +1015,10 @@ def build_lunch_job_assignments(
     df_lunch_job,
     df_hardcoded_assignments
     )
+    
+    # Print detailed summaries if verbose mode is enabled
+    if verbose:
+        print_assignment_summary(df_hardcoded_assignments, df_final_assignments, df_days, df_lunch_job)
 
     print(f"\n\nTotal assignments: {len(df_final_assignments)} records")
 

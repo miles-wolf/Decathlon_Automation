@@ -3,8 +3,8 @@ import os
 import numpy as np
 import random
 
-# Go up one level from the current notebook directory
-project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
+# Go up one level from the current file path to find the project root
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 # Add project root to sys.path if not already there
 if project_root not in sys.path:
@@ -37,6 +37,7 @@ tie_dye_staff = config["tie_dye_staff"]
 staff_to_remove = config["staff_to_remove"]
 staff_to_add = config["staff_to_add"]
 custom_job_assignments = config["custom_job_assignments"]
+verbose = config.get("verbose", False)  # Default to False if not specified
 
 
 
@@ -59,7 +60,8 @@ debug_output = ljh.build_lunch_job_assignments(
     staff_to_remove=staff_to_remove,
     staff_to_add=staff_to_add,
     custom_job_assignments=custom_job_assignments,
-    debug = True   # change to True to return ALL dataframes in a dictionary
+    debug=True,   # change to True to return ALL dataframes in a dictionary
+    verbose=verbose  # Enable detailed assignment summaries
    
 )
 
@@ -68,8 +70,9 @@ debug_output = ljh.build_lunch_job_assignments(
 df_final = debug_output["df_final_assignments_enriched"]
 
 # View results
+# python files don't know the jupyter notebooks command "display" so we use print
 pd.set_option('display.max_rows', None)
-display(df_final)
+print(df_final)
 
 
 #config #uncomment to display config dictionary

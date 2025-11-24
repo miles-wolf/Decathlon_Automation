@@ -37,6 +37,7 @@ tie_dye_staff = config["tie_dye_staff"]
 staff_to_remove = config["staff_to_remove"]
 staff_to_add = config["staff_to_add"]
 custom_job_assignments = config["custom_job_assignments"]
+debug = config.get("debug", False)  # Default to False if not specified
 verbose = config.get("verbose", False)  # Default to False if not specified
 
 
@@ -60,7 +61,7 @@ debug_output = ljh.build_lunch_job_assignments(
     staff_to_remove=staff_to_remove,
     staff_to_add=staff_to_add,
     custom_job_assignments=custom_job_assignments,
-    debug=True,   # change to True to return ALL dataframes in a dictionary
+    debug=debug,   # change to True to return ALL dataframes in a dictionary
     verbose=verbose  # Enable detailed assignment summaries
    
 )

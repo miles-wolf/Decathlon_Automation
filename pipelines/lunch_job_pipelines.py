@@ -20,11 +20,13 @@ import pandas as pd
 from connections import db_connections as dbc
 from helpers import lunch_job_helpers as ljh
 
+dir = 'test'
+fn = [
+    'lunchjob_inputs.example1.json',
+    'lunchjob_inputs.example2.json'] ## json MUST BE IN Decathlon_Automation/config/lunchjob_inputs/dir/
 
-fn = 'lunchjob_inputs.example.json' ## json MUST BE IN Decathlon_Automation/config
 
-
-config = ljh.load_lunch_job_config(filename = fn)
+config = ljh.load_lunch_job_config(directory = dir, filename = fn[0]) ##load config json
 
 session_id = config['session_id']  
 pattern_based_jobs = config["pattern_based_jobs"]

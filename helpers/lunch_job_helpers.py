@@ -1184,7 +1184,7 @@ def transform_to_schedule_format(df_final_assignments_enriched):
     return df_schedule
 
 
-def load_lunch_job_config(filename: str) -> dict:
+def load_lunch_job_config(directory: str, filename: str) -> dict:
     ##author kavin
     """
     Loads the lunch job configuration JSON and returns it
@@ -1214,7 +1214,7 @@ def load_lunch_job_config(filename: str) -> dict:
 
 # Resolve the path to the config directory regardless of where it's called from
     base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
-    file = base_dir / "config" / filename
+    file = base_dir / "config" / "lunchjob_inputs" / directory / filename
 
     if not file.exists():
         raise FileNotFoundError(f"Config file not found: {file}")

@@ -21,6 +21,9 @@ from connections import db_connections as dbc
 from helpers import lunch_job_helpers as ljh
 
 
+
+
+
 fn = 'lunchjob_inputs.example.json' ## json MUST BE IN Decathlon_Automation/config
 
 
@@ -38,6 +41,8 @@ debug = config.get("debug", False)  # Default to False if not specified
 verbose = config.get("verbose", False)  # Default to False if not specified
 
 
+
+
 #retrieve db creds
 creds = dbc.load_db_read_creds()
 
@@ -45,7 +50,7 @@ creds = dbc.load_db_read_creds()
 conn,cur = dbc.connect_to_postgres(creds['db_name'],creds['user'],creds['password'],creds['host'],creds['port'])
 
 
-output = ljh.build_lunch_job_assignments(
+debug_output = ljh.build_lunch_job_assignments(
     conn=conn,
     cur=cur,
     session_id=session_id,
@@ -58,29 +63,23 @@ output = ljh.build_lunch_job_assignments(
     custom_job_assignments=custom_job_assignments,
     debug=debug,   # change to True to return ALL dataframes in a dictionary
     verbose=verbose  # Enable detailed assignment summaries
+   
 )
 
 
-# Handle both debug and normal output
-if debug:
-    df_schedule = output["df_schedule"]
-else:
-    df_schedule = output
 
-# View results in schedule format
+df_final = debug_output["df_final_assignments_enriched"]
+
+# View results
 # python files don't know the jupyter notebooks command "display" so we use print
 pd.set_option('display.max_rows', None)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', None)
-print("\n" + "="*80)
-print("LUNCH JOB SCHEDULE")
-print("="*80)
-print(df_schedule)
+print(df_final)
 
-# Export to CSV
-df_schedule.to_csv('lunch_job_schedule.csv', index=False)
-print("\nSchedule exported to lunch_job_schedule.csv")
 
+#config #uncomment to display config dictionary
+
+
+#config
 
 
 

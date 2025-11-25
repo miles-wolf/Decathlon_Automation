@@ -868,9 +868,9 @@ def build_lunch_job_assignments(
 
     Loads SQL internally, runs exception logic, A/B group pattern logic,
     hardcoded assignments, random assignments, merges/enriches output,
-    and returns df_final_assignments_enriched.
+    and returns schedule format with staff as rows and days as columns.
 
-    If debug=True, returns a dictionary of all intermediate DataFrames.
+    If debug=True, returns a dictionary of all intermediate DataFrames (including schedule format).
     If verbose=True, prints detailed assignment summaries and staffing checklists.
     """
 
@@ -1066,7 +1066,12 @@ def build_lunch_job_assignments(
     ).reset_index(drop=True)
 
     # ----------------------------------------------------------------------
-    # 9. Return (debug or normal)
+    # 9. Transform to schedule format
+    # ----------------------------------------------------------------------
+    df_schedule = transform_to_schedule_format(df_final_assignments_enriched)
+    
+    # ----------------------------------------------------------------------
+    # 10. Return (debug or normal)
     # ----------------------------------------------------------------------
     if debug:
         print('DEBUG output enabled')
@@ -1081,12 +1086,103 @@ def build_lunch_job_assignments(
             "df_staff_balanced": df_staff_balanced,
             "df_hardcoded_assignments": df_hardcoded_assignments,
             "df_final_assignments": df_final_assignments,
-            "df_final_assignments_enriched": df_final_assignments_enriched
+            "df_final_assignments_enriched": df_final_assignments_enriched,
+            "df_schedule": df_schedule
         }
        
-    print('DEBUG is not enabled')
-    print('returning final dataframe in tabular format')
-    return df_final_assignments_enriched
+    print('Returning schedule format (staff as rows, days as columns)')
+    return df_schedule
+
+def transform_to_schedule_format(df_final_assignments_enriched):
+    """
+    Transform the assignments dataframe into a schedule format matching the CSV template.
+    Groups counselors and junior counselors separately, splits by pattern A/B,
+    with staff as rows and days as columns.
+    
+    Parameters:
+    - df_final_assignments_enriched: dataframe with all assignments
+    
+    Returns:
+    - df_schedule: transformed dataframe in schedule format
+    """
+    
+    # Define day order for columns
+    day_columns = ['M', 'T', 'W', 'TH', 'F']
+    day_mapping = {
+        'monday': 'M',
+        'tuesday': 'T',
+        'wednesday': 'W',
+        'thursday': 'TH',
+        'friday': 'F'
+    }
+    
+    # Pivot the data: staff_name as rows, days as columns, job_code as values
+    df_pivot = df_final_assignments_enriched.copy()
+    df_pivot['day_abbrev'] = df_pivot['day_name'].str.lower().map(day_mapping)
+    
+    # Create pivot table
+    pivot_table = df_pivot.pivot_table(
+        index=['staff_name', 'role_id', 'actual_assignment'],
+        columns='day_abbrev',
+        values='job_code',
+        aggfunc='first'
+    ).reset_index()
+    
+    # Ensure all day columns exist (including Friday with no data)
+    for day in day_columns:
+        if day not in pivot_table.columns:
+            pivot_table[day] = ''
+    
+    # Reorder columns
+    pivot_table = pivot_table[['staff_name', 'role_id', 'actual_assignment'] + day_columns]
+    
+    # Separate counselors and junior counselors
+    counselors = pivot_table[pivot_table['role_id'] == 1005].copy()
+    junior_counselors = pivot_table[pivot_table['role_id'] == 1006].copy()
+    
+    # Split each by pattern A and B
+    counselors_a = counselors[counselors['actual_assignment'] == 'A'].sort_values('staff_name')
+    counselors_b = counselors[counselors['actual_assignment'] == 'B'].sort_values('staff_name')
+    junior_counselors_a = junior_counselors[junior_counselors['actual_assignment'] == 'A'].sort_values('staff_name')
+    junior_counselors_b = junior_counselors[junior_counselors['actual_assignment'] == 'B'].sort_values('staff_name')
+    
+    # Drop role_id and actual_assignment columns as they're just for sorting
+    for df in [counselors_a, counselors_b, junior_counselors_a, junior_counselors_b]:
+        df.drop(columns=['role_id', 'actual_assignment'], inplace=True)
+    
+    # Create section headers
+    counselors_header = pd.DataFrame([['COUNSELORS: PATTERN A', '', '', '', '', '']], 
+                                      columns=['staff_name'] + day_columns)
+    counselors_b_header = pd.DataFrame([['COUNSELORS: PATTERN B', '', '', '', '', '']], 
+                                        columns=['staff_name'] + day_columns)
+    jc_header = pd.DataFrame([['JUNIOR COUNSELORS: PATTERN A', '', '', '', '', '']], 
+                              columns=['staff_name'] + day_columns)
+    jc_b_header = pd.DataFrame([['JUNIOR COUNSELORS: PATTERN B', '', '', '', '', '']], 
+                                columns=['staff_name'] + day_columns)
+    blank_row = pd.DataFrame([['', '', '', '', '', '']], 
+                              columns=['staff_name'] + day_columns)
+    
+    # Combine all sections
+    df_schedule = pd.concat([
+        counselors_header,
+        counselors_a,
+        blank_row,
+        counselors_b_header,
+        counselors_b,
+        blank_row,
+        blank_row,
+        jc_header,
+        junior_counselors_a,
+        blank_row,
+        jc_b_header,
+        junior_counselors_b
+    ], ignore_index=True)
+    
+    # Replace NaN with empty strings
+    df_schedule = df_schedule.fillna('')
+    
+    return df_schedule
+
 
 def load_lunch_job_config(filename: str) -> dict:
     ##author kavin
@@ -1146,6 +1242,7 @@ def load_lunch_job_config(filename: str) -> dict:
 
 
     return data
+
 
 
 

@@ -859,7 +859,9 @@ def build_lunch_job_assignments(
     staff_to_add=None,
     custom_job_assignments=None,
     debug=False,
-    verbose=False
+    verbose=False,
+    precomputed_staff_patterns=None,
+    week_number=None
 ):
     """
     Master wrapper for generating lunch job assignments.
@@ -872,6 +874,16 @@ def build_lunch_job_assignments(
 
     If debug=True, returns a dictionary of all intermediate DataFrames (including schedule format).
     If verbose=True, prints detailed assignment summaries and staffing checklists.
+    
+    Parameters
+    ----------
+    precomputed_staff_patterns : dict, optional
+        Dictionary mapping staff_id to pattern ('A' or 'B'). When provided, these patterns
+        will be used for staff with hardcoded assignments instead of random assignment.
+        This is computed in multi-week scheduling to ensure consistency across weeks.
+        If None, patterns are assigned randomly for all staff.
+    week_number : int, optional
+        Week number for labeling in multi-week schedules.
     """
 
     # ----------------------------------------------------------------------
@@ -926,63 +938,95 @@ def build_lunch_job_assignments(
     on="group_id",
     how="left"
      )
-    df_group_patterns = assign_group_patterns(df_eligible_staff)
-    #df_group_patterns.head()
-
-
-    df_eligible_staff_patterns_and_exceptions = df_eligible_staff_with_exceptions.merge(
-        df_group_patterns[["group_id", "base_pattern"]], #pattern lookup ,
-        on="group_id",
-        how="left"
-    )
-
-
-    df_eligible_staff_patterns_and_exceptions["actual_assignment"] = (
-        df_eligible_staff_patterns_and_exceptions.apply(
-            lambda row: 
-                # Counselors (1005) → keep base pattern
-                row["base_pattern"] 
-                if row["role_id"] == 1005 
-                else 
-                # Junior Counselors (1006) → flip the pattern
-                ("A" if row["base_pattern"] == "B" else "B"),
-            axis=1
+    
+    # ----------------------------------------------------------------------
+    # 3. PATTERN ASSIGNMENT - use precomputed patterns if available
+    # ----------------------------------------------------------------------
+    if precomputed_staff_patterns:
+        # Use precomputed patterns (multi-week mode)
+        print(f"\nUsing precomputed patterns for {len(precomputed_staff_patterns)} staff members")
+        df_eligible_staff_with_exceptions['actual_assignment'] = df_eligible_staff_with_exceptions['staff_id'].apply(
+            lambda sid: precomputed_staff_patterns.get(sid, None)
         )
-    )
+        
+        # For staff without precomputed patterns, assign based on group patterns
+        df_group_patterns = assign_group_patterns(df_eligible_staff)
+        df_eligible_staff_with_patterns = df_eligible_staff_with_exceptions.merge(
+            df_group_patterns[["group_id", "base_pattern"]],
+            on="group_id",
+            how="left"
+        )
+        
+        # Fill in missing patterns using group-based logic
+        mask_missing = df_eligible_staff_with_patterns['actual_assignment'].isna()
+        df_eligible_staff_with_patterns.loc[mask_missing, 'actual_assignment'] = (
+            df_eligible_staff_with_patterns.loc[mask_missing].apply(
+                lambda row: 
+                    row["base_pattern"] 
+                    if row["role_id"] == 1005 
+                    else ("A" if row["base_pattern"] == "B" else "B"),
+                axis=1
+            )
+        )
+        
+        df_eligible_staff_dirty = df_eligible_staff_with_patterns
+    else:
+        # Original logic - assign patterns from scratch (single-week mode)
+        df_group_patterns = assign_group_patterns(df_eligible_staff)
 
+        df_eligible_staff_patterns_and_exceptions = df_eligible_staff_with_exceptions.merge(
+            df_group_patterns[["group_id", "base_pattern"]], #pattern lookup ,
+            on="group_id",
+            how="left"
+        )
 
+        df_eligible_staff_patterns_and_exceptions["actual_assignment"] = (
+            df_eligible_staff_patterns_and_exceptions.apply(
+                lambda row: 
+                    # Counselors (1005) → keep base pattern
+                    row["base_pattern"] 
+                    if row["role_id"] == 1005 
+                    else 
+                    # Junior Counselors (1006) → flip the pattern
+                    ("A" if row["base_pattern"] == "B" else "B"),
+                axis=1
+            )
+        )
 
-    df_eligible_staff_dirty = df_eligible_staff_patterns_and_exceptions
+        df_eligible_staff_dirty = df_eligible_staff_patterns_and_exceptions
 
+    # ----------------------------------------------------------------------
+    # 4. EXCEPTION HANDLING - randomize within exception groups
+    # ----------------------------------------------------------------------
     df_eligible_staff_only_exceptions = df_eligible_staff_dirty[~df_eligible_staff_dirty['pattern_exception']]
 
     df_eligible_staff_without_exceptions = df_eligible_staff_dirty[df_eligible_staff_dirty['pattern_exception']]
     
     
-    # assign A/B for rows flagged as exceptions
+    # assign A/B for rows flagged as exceptions (only if not using precomputed patterns)
     df_exceptions = df_eligible_staff_only_exceptions.copy()
 
-    df_exceptions['exception_assignment'] = None
+    if not precomputed_staff_patterns:
+        # Only randomize exceptions if we don't have precomputed patterns
+        df_exceptions['exception_assignment'] = None
 
-    for gid, grp in df_exceptions.groupby('group_id'):
-        idxs = grp.index.tolist()
-        random.shuffle(idxs)
-        n = len(idxs)
-        # decide how many go to A (if odd, pick which side gets the extra at random)
-        if n % 2 == 0:
-            nA = n // 2
-        else:
-            nA = n // 2 + (1 if random.choice(['A', 'B']) == 'A' else 0)
-        a_idxs = idxs[:nA]
-        b_idxs = idxs[nA:]
-        df_exceptions.loc[a_idxs, 'exception_assignment'] = 'A'
-        df_exceptions.loc[b_idxs, 'exception_assignment'] = 'B'
+        for gid, grp in df_exceptions.groupby('group_id'):
+            idxs = grp.index.tolist()
+            random.shuffle(idxs)
+            n = len(idxs)
+            # decide how many go to A (if odd, pick which side gets the extra at random)
+            if n % 2 == 0:
+                nA = n // 2
+            else:
+                nA = n // 2 + (1 if random.choice(['A', 'B']) == 'A' else 0)
+            a_idxs = idxs[:nA]
+            b_idxs = idxs[nA:]
+            df_exceptions.loc[a_idxs, 'exception_assignment'] = 'A'
+            df_exceptions.loc[b_idxs, 'exception_assignment'] = 'B'
 
-    # Update actual_assignment for exception rows
-    df_exceptions['actual_assignment'] = df_exceptions['exception_assignment']
-    df_exceptions.drop(columns=["exception_assignment"], inplace=True)
-
-
+        # Update actual_assignment for exception rows
+        df_exceptions['actual_assignment'] = df_exceptions['exception_assignment']
+        df_exceptions.drop(columns=["exception_assignment"], inplace=True)
 
     # Concatenate exceptions with non-exceptions
     df_eligible_staff_combined = pd.concat([df_eligible_staff_without_exceptions, df_exceptions], ignore_index=False)
@@ -1190,8 +1234,8 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     Loads the lunch job configuration JSON and returns it
     as a parent dictionary keyed by the original variable names.
 
-    lunch job configuration JSON file should be located
-    from the /config directory.
+    lunch job configuration JSON files should be located
+    from the /config/lunchjob_inputs/{directory} directory.
 
 
     Parameters
@@ -1213,7 +1257,7 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     """
 
 # Resolve the path to the config directory regardless of where it's called from
-    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
+    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/config/lunchjob_inputs/
     file = base_dir / "config" / "lunchjob_inputs" / directory / filename
 
     if not file.exists():
@@ -1242,6 +1286,215 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
 
 
     return data
+
+
+def balance_staff_patterns_across_weeks(configs):
+    """
+    Analyzes hardcoded assignments across all weeks to balance pattern assignments (A/B).
+    
+    This function examines pattern_based_jobs and tie_dye_staff across all weeks
+    to ensure the split between patterns A and B is balanced when considering the full session.
+    
+    Parameters
+    ----------
+    configs : list of dict
+        List of config dictionaries, one per week
+        
+    Returns
+    -------
+    dict
+        Dictionary mapping staff_id to their final pattern assignment ('A' or 'B')
+    """
+    print("\n" + "="*80)
+    print("STEP 1: BALANCING STAFF PATTERNS ACROSS ALL WEEKS")
+    print("="*80)
+    
+    # Track staff assignments across all weeks
+    staff_week_assignments = {}  # {staff_id: [week1_jobs, week2_jobs, ...]}
+    
+    for week_idx, config in enumerate(configs):
+        week_num = week_idx + 1
+        print(f"\nAnalyzing Week {week_num} hardcoded assignments...")
+        
+        # Collect staff from pattern_based_jobs
+        if config.get("pattern_based_jobs"):
+            for job_id, staff_list in config["pattern_based_jobs"].items():
+                for staff_id in staff_list:
+                    if staff_id not in staff_week_assignments:
+                        staff_week_assignments[staff_id] = []
+                    staff_week_assignments[staff_id].append(('pattern_job', week_num, job_id))
+        
+        # Collect staff from tie_dye_staff
+        if config.get("tie_dye_staff"):
+            for staff_id in config["tie_dye_staff"]:
+                if staff_id not in staff_week_assignments:
+                    staff_week_assignments[staff_id] = []
+                staff_week_assignments[staff_id].append(('tie_dye', week_num, None))
+    
+    print(f"\nTotal staff with hardcoded assignments: {len(staff_week_assignments)}")
+    
+    # Count assignments per pattern to balance
+    # For now, we'll assign patterns to balance the overall load
+    # Staff with more assignments across weeks should be distributed evenly
+    
+    staff_assignment_counts = {
+        staff_id: len(assignments) 
+        for staff_id, assignments in staff_week_assignments.items()
+    }
+    
+    # Sort staff by assignment count (most assigned first)
+    sorted_staff = sorted(staff_assignment_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    # Alternating assignment to balance patterns
+    pattern_assignments = {}
+    pattern_counts = {'A': 0, 'B': 0}
+    
+    for staff_id, count in sorted_staff:
+        # Assign to the pattern with fewer staff so far
+        if pattern_counts['A'] <= pattern_counts['B']:
+            pattern_assignments[staff_id] = 'A'
+            pattern_counts['A'] += count
+        else:
+            pattern_assignments[staff_id] = 'B'
+            pattern_counts['B'] += count
+    
+    print(f"\nPattern distribution:")
+    print(f"  Pattern A: {len([p for p in pattern_assignments.values() if p == 'A'])} staff, {pattern_counts['A']} total assignments")
+    print(f"  Pattern B: {len([p for p in pattern_assignments.values() if p == 'B'])} staff, {pattern_counts['B']} total assignments")
+    
+    return pattern_assignments
+
+
+def build_multi_week_schedule(conn, cur, directory):
+    """
+    Master wrapper function for generating lunch job assignments across multiple weeks.
+    
+    This function:
+    1. Automatically discovers all JSON files in the specified directory
+    2. Balances staff patterns across all weeks based on hardcoded assignments
+    3. Generates weekly schedules with consistent pattern assignments
+    4. Combines all weeks into a single output DataFrame
+    
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Active database connection
+    cur : psycopg2.cursor
+        Active database cursor
+    directory : str
+        Directory name under config/lunchjob_inputs/ containing the week JSON files
+        (e.g., 'test' will look in config/lunchjob_inputs/test/)
+    
+    Returns
+    -------
+    pd.DataFrame
+        Combined schedule for all weeks with a 'Week' column identifier
+    """
+    print("\n" + "="*80)
+    print("MULTI-WEEK LUNCH JOB SCHEDULE GENERATOR")
+    print("="*80)
+    
+    # Resolve the directory path
+    base_dir = Path(__file__).resolve().parents[1]
+    input_dir = base_dir / "config" / "lunchjob_inputs" / directory
+    
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Directory not found: {input_dir}")
+    
+    # Find all JSON files in the directory
+    json_files = sorted([f.name for f in input_dir.glob("*.json")])
+    
+    if not json_files:
+        raise FileNotFoundError(f"No JSON files found in directory: {input_dir}")
+    
+    print(f"\nFound {len(json_files)} week(s) to process:")
+    for i, filename in enumerate(json_files, 1):
+        print(f"  Week {i}: {filename}")
+    
+    # STEP 1: Load all configs
+    print("\n" + "="*80)
+    print("LOADING CONFIGURATIONS FOR ALL WEEKS")
+    print("="*80)
+    
+    configs = []
+    for i, filename in enumerate(json_files):
+        print(f"\nLoading Week {i+1}: {filename}")
+        config = load_lunch_job_config(directory=directory, filename=filename)
+        configs.append(config)
+    
+    # Use session_id, debug, and verbose from first config (should be same across all weeks)
+    session_id = configs[0]['session_id']
+    debug = configs[0].get("debug", False)
+    verbose = configs[0].get("verbose", False)
+    
+    # STEP 2: Balance staff patterns across all weeks based on hardcoded assignments
+    overall_staff_patterns = balance_staff_patterns_across_weeks(configs)
+    
+    # STEP 3: Loop through each week and generate assignments
+    print("\n" + "="*80)
+    print("STEP 2: GENERATING WEEKLY SCHEDULES")
+    print("="*80)
+    
+    all_week_schedules = []
+    
+    for week_idx, config in enumerate(configs):
+        week_num = week_idx + 1
+        print("\n" + "="*80)
+        print(f"PROCESSING WEEK {week_num}")
+        print("="*80)
+        
+        # Extract config parameters for this week
+        pattern_based_jobs = config["pattern_based_jobs"]
+        staff_game_days = config["staff_game_days"]
+        tie_dye_days = config["tie_dye_days"]
+        tie_dye_staff = config["tie_dye_staff"]
+        staff_to_remove = config["staff_to_remove"]
+        staff_to_add = config["staff_to_add"]
+        custom_job_assignments = config["custom_job_assignments"]
+        
+        output = build_lunch_job_assignments(
+            conn=conn,
+            cur=cur,
+            session_id=session_id,
+            pattern_based_jobs=pattern_based_jobs,
+            staff_game_days=staff_game_days,
+            tie_dye_days=tie_dye_days,
+            tie_dye_staff=tie_dye_staff,
+            staff_to_remove=staff_to_remove,
+            staff_to_add=staff_to_add,
+            custom_job_assignments=custom_job_assignments,
+            debug=debug,
+            verbose=verbose,
+            precomputed_staff_patterns=overall_staff_patterns,
+            week_number=week_num
+        )
+        
+        # Handle both debug and normal output
+        if debug:
+            df_schedule = output["df_schedule"].copy() if isinstance(output, dict) else output.copy()
+        else:
+            df_schedule = output.copy()
+        
+        # Add week identifier column
+        if isinstance(df_schedule, pd.DataFrame):
+            df_schedule.insert(0, 'Week', f'Week {week_num}')
+        
+        all_week_schedules.append(df_schedule)
+        
+        print(f"\nWeek {week_num} schedule generated successfully ✅")
+    
+    # STEP 4: Combine all weeks into single schedule
+    print("\n" + "="*80)
+    print("COMBINING ALL WEEKS INTO FINAL SCHEDULE")
+    print("="*80)
+    
+    df_full_session = pd.concat(all_week_schedules, ignore_index=True)
+    
+    print(f"\nFull session schedule complete!")
+    print(f"Total weeks: {len(json_files)}")
+    print(f"Total rows: {len(df_full_session)}")
+    
+    return df_full_session
 
 
 

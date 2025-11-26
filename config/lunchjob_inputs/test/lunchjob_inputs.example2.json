@@ -5,18 +5,10 @@
     "1009": [1053, 1099]
   },
   "staff_game_days": [
-    "thursday"
   ],
   "tie_dye_days": [
-    "tuesday",
-    "wednesday"
   ],
   "tie_dye_staff": [
-    1001,
-    1171,
-    1087,
-    1075,
-    1091
   ],
   "staff_to_remove": [
     1115
@@ -27,11 +19,6 @@
       "staff_name": "Donut Wheel",
       "group_id": 1004,
       "actual_assignment": "A"
-    },
-    {
-      "staff_id": 9002,
-      "staff_name": "Chromebooks",
-      "group_id": 1511
     },
     {
       "staff_id": 9003,

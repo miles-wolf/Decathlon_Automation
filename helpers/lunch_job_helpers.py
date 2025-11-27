@@ -1051,6 +1051,30 @@ def build_lunch_job_assignments(
      )
 
     # ----------------------------------------------------------------------
+    # 5.5. BALANCE PATTERN DISTRIBUTION (avoid swapping hardcoded staff)
+    # ----------------------------------------------------------------------
+    # Collect all staff with hardcoded assignments
+    hardcoded_staff_ids = []
+    if pattern_based_jobs:
+        for staff_list in pattern_based_jobs.values():
+            hardcoded_staff_ids.extend(staff_list)
+    if tie_dye_staff:
+        hardcoded_staff_ids.extend(tie_dye_staff)
+    if custom_job_assignments:
+        if 'all_days' in custom_job_assignments:
+            for staff_list in custom_job_assignments['all_days'].values():
+                hardcoded_staff_ids.extend(staff_list)
+        if 'specific_days' in custom_job_assignments:
+            for assignment in custom_job_assignments['specific_days']:
+                hardcoded_staff_ids.append(assignment[0])  # staff_id is first element
+    
+    # Remove duplicates
+    hardcoded_staff_ids = list(set(hardcoded_staff_ids))
+    
+    # Balance the pattern distribution
+    df_staff_balanced = balance_pattern_distribution(df_staff_balanced, hardcoded_staff_ids)
+
+    # ----------------------------------------------------------------------
     # 6. RANDOM ASSIGNMENTS
     # ----------------------------------------------------------------------
     df_final_assignments = assign_random_lunch_jobs(
@@ -1123,15 +1147,15 @@ def build_lunch_job_assignments(
         return {
             "df_days": df_days,
             "df_lunch_job": df_lunch_job,
-            "df_eligible_staff": df_eligible_staff,
-            "df_eligible_staff_agg":eligible_staff_agg,
-            "df_eligible_staff_dirty":df_eligible_staff_dirty,
-            "df_eligible_staff_clean":df_eligible_staff_clean,
-            "df_staff_balanced": df_staff_balanced,
-            "df_hardcoded_assignments": df_hardcoded_assignments,
-            "df_final_assignments": df_final_assignments,
-            "df_final_assignments_enriched": df_final_assignments_enriched,
-            "df_schedule": df_schedule
+            "df_eligible_staff": df_eligible_staff, # original eligible staff from SQL
+            "df_eligible_staff_agg":eligible_staff_agg, # aggregation used for exception detection
+            "df_eligible_staff_dirty":df_eligible_staff_dirty, # eligible staff before cleaning, with pattern exception column
+            "df_eligible_staff_clean":df_eligible_staff_clean, # eligible staff after cleaning, with final patterns
+            "df_staff_balanced": df_staff_balanced, # balanced staff dataframe after pattern balancing
+            "df_hardcoded_assignments": df_hardcoded_assignments, # hardcoded assignments dataframe
+            "df_final_assignments": df_final_assignments, # all assignments before enrichment, 
+            "df_final_assignments_enriched": df_final_assignments_enriched, # all assignments after enrichment, with staff details
+            "df_schedule": df_schedule # final schedule format output
         }
        
     print('Returning schedule format (staff as rows, days as columns)')
@@ -1288,6 +1312,134 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     return data
 
 
+def balance_pattern_distribution(df_staff, hardcoded_staff_ids):
+    """
+    Balance the distribution of staff between patterns A and B by swapping entire groups.
+    
+    This function checks if the pattern distribution is imbalanced (difference > 2).
+    If so, it swaps groups from the larger pattern to the smaller pattern, avoiding
+    any staff with hardcoded assignments.
+    
+    Parameters
+    ----------
+    df_staff : pd.DataFrame
+        Staff dataframe with 'staff_id', 'group_id', and 'actual_assignment' columns
+    hardcoded_staff_ids : list
+        List of staff IDs that have hardcoded assignments and should not be swapped
+        
+    Returns
+    -------
+    pd.DataFrame
+        Updated staff dataframe with balanced pattern assignments
+    """
+    print("\n" + "="*80)
+    print("BALANCING PATTERN DISTRIBUTION")
+    print("="*80)
+    
+    df_staff = df_staff.copy()
+    
+    # Count staff in each pattern
+    pattern_counts = df_staff['actual_assignment'].value_counts().to_dict()
+    count_a = pattern_counts.get('A', 0)
+    count_b = pattern_counts.get('B', 0)
+    
+    print(f"\nInitial pattern distribution:")
+    print(f"  Pattern A: {count_a} staff")
+    print(f"  Pattern B: {count_b} staff")
+    print(f"  Difference: {abs(count_a - count_b)}")
+    
+    # Check if balancing is needed
+    if abs(count_a - count_b) <= 2:
+        print("\n✓ Pattern distribution is already balanced (difference ≤ 2)")
+        return df_staff
+    
+    print(f"\n⚠️  Pattern imbalance detected (difference > 2). Starting rebalancing...")
+    
+    # Determine which pattern has more and which has fewer
+    if count_a > count_b:
+        larger_pattern = 'A'
+        smaller_pattern = 'B'
+    else:
+        larger_pattern = 'B'
+        smaller_pattern = 'A'
+    
+    print(f"  Moving groups from Pattern {larger_pattern} to Pattern {smaller_pattern}")
+    
+    # Get groups that can be swapped (no hardcoded staff)
+    eligible_groups = df_staff[~df_staff['staff_id'].isin(hardcoded_staff_ids)].groupby('group_id')
+    
+    # Calculate group pattern composition
+    group_patterns = []
+    for group_id, group_df in eligible_groups:
+        larger_count = (group_df['actual_assignment'] == larger_pattern).sum()
+        smaller_count = (group_df['actual_assignment'] == smaller_pattern).sum()
+        total = len(group_df)
+        
+        # Only consider groups that have staff in the larger pattern
+        if larger_count > 0:
+            # Priority: groups with more staff in larger pattern
+            group_patterns.append({
+                'group_id': group_id,
+                'larger_count': larger_count,
+                'smaller_count': smaller_count,
+                'total': total,
+                'net_swap': larger_count - smaller_count  # Net reduction in imbalance if swapped
+            })
+    
+    # Sort groups by net_swap (descending) - groups that will reduce imbalance most
+    group_patterns.sort(key=lambda x: x['net_swap'], reverse=True)
+    
+    # Swap groups until difference is ≤ 2
+    swapped_groups = []
+    current_diff = abs(count_a - count_b)
+    
+    for group_info in group_patterns:
+        if current_diff <= 2:
+            break
+        
+        group_id = group_info['group_id']
+        net_swap = group_info['net_swap']
+        
+        # Check if this swap will help reduce the imbalance
+        new_diff = abs(current_diff - 2 * net_swap)
+        
+        # Only swap if it improves or maintains the balance
+        if new_diff < current_diff or (new_diff == current_diff and net_swap > 0):
+            # Swap this group
+            group_mask = (df_staff['group_id'] == group_id) & (~df_staff['staff_id'].isin(hardcoded_staff_ids))
+            df_staff.loc[group_mask, 'actual_assignment'] = df_staff.loc[group_mask, 'actual_assignment'].apply(
+                lambda x: smaller_pattern if x == larger_pattern else larger_pattern
+            )
+            
+            swapped_groups.append({
+                'group_id': group_id,
+                'larger_to_smaller': group_info['larger_count'],
+                'smaller_to_larger': group_info['smaller_count']
+            })
+            
+            current_diff = new_diff
+            print(f"  Swapped group {group_id}: {group_info['larger_count']} staff {larger_pattern}→{smaller_pattern}, "
+                  f"{group_info['smaller_count']} staff {smaller_pattern}→{larger_pattern} (new diff: {current_diff})")
+    
+    # Final count
+    final_pattern_counts = df_staff['actual_assignment'].value_counts().to_dict()
+    final_count_a = final_pattern_counts.get('A', 0)
+    final_count_b = final_pattern_counts.get('B', 0)
+    final_diff = abs(final_count_a - final_count_b)
+    
+    print(f"\nFinal pattern distribution:")
+    print(f"  Pattern A: {final_count_a} staff")
+    print(f"  Pattern B: {final_count_b} staff")
+    print(f"  Difference: {final_diff}")
+    
+    if swapped_groups:
+        print(f"\n✓ Swapped {len(swapped_groups)} group(s) to achieve balance")
+    else:
+        print(f"\n⚠️  Could not improve balance further without affecting hardcoded staff")
+    
+    return df_staff
+
+
 def balance_staff_patterns_across_weeks(configs):
     """
     Analyzes hardcoded assignments across all weeks to balance pattern assignments (A/B).
@@ -1401,11 +1553,22 @@ def build_multi_week_schedule(conn, cur, directory):
     if not input_dir.exists():
         raise FileNotFoundError(f"Directory not found: {input_dir}")
     
-    # Find all JSON files in the directory
-    json_files = sorted([f.name for f in input_dir.glob("*.json")])
+    # Find all JSON files in the directory that contain "week #" pattern in the filename
+    # Week number can be indicated as "week1", "week_2", "week 3", etc.
+    # Example filenames: "lunchjob_week1.json", "week 2 lunchjob.json"
+    import re
+    all_files = []
+    for f in input_dir.glob("*.json"):
+        match = re.search(r'week[\s_]*(\d+)', f.name.lower())
+        if match:
+            all_files.append((f, int(match.group(1))))
     
-    if not json_files:
-        raise FileNotFoundError(f"No JSON files found in directory: {input_dir}")
+    if not all_files:
+        raise FileNotFoundError(f"No JSON files with 'week #' pattern found in directory: {input_dir}")
+    
+    # Sort files by week number
+    all_files.sort(key=lambda x: x[1])
+    json_files = [f[0].name for f in all_files]
     
     print(f"\nFound {len(json_files)} week(s) to process:")
     for i, filename in enumerate(json_files, 1):
@@ -1436,6 +1599,7 @@ def build_multi_week_schedule(conn, cur, directory):
     print("="*80)
     
     all_week_schedules = []
+    all_debug_outputs = {}  # Store debug outputs per week
     
     for week_idx, config in enumerate(configs):
         week_num = week_idx + 1
@@ -1471,7 +1635,9 @@ def build_multi_week_schedule(conn, cur, directory):
         
         # Handle both debug and normal output
         if debug:
-            df_schedule = output["df_schedule"].copy() if isinstance(output, dict) else output.copy()
+            # Store the full debug dictionary for this week
+            all_debug_outputs[f'week_{week_num}'] = output
+            df_schedule = output["df_schedule"].copy()
         else:
             df_schedule = output.copy()
         
@@ -1493,6 +1659,14 @@ def build_multi_week_schedule(conn, cur, directory):
     print(f"\nFull session schedule complete!")
     print(f"Total weeks: {len(json_files)}")
     print(f"Total rows: {len(df_full_session)}")
+    
+    # Return debug output if requested
+    if debug:
+        print('\nDEBUG output enabled')
+        print('returning DEBUG dictionary with all intermediate DataFrames for each week')
+        all_debug_outputs['df_full_session'] = df_full_session
+        all_debug_outputs['overall_staff_patterns'] = overall_staff_patterns
+        return all_debug_outputs
     
     return df_full_session
 

@@ -60,6 +60,13 @@ print("\nFull session schedule exported to lunch_job_schedule.csv")
 if isinstance(output, dict):
     print("\nDebug outputs available in 'debug_outputs' variable")
     print(f"Available keys: {list(output.keys())}")
+    
+    # Export wide format if available
+    if 'df_wide_format' in output and output['df_wide_format'] is not None:
+        df_wide = output['df_wide_format']
+        df_wide.to_csv('lunch_job_schedule_wide.csv', index=False)
+        print("\nWide format schedule exported to lunch_job_schedule_wide.csv")
+        print(f"Wide format: {len(df_wide)} rows × {len(df_wide.columns)} columns")
 
 
 

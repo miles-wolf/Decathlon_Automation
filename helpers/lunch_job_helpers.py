@@ -1,4 +1,4 @@
-import psycopg2
+﻿import psycopg2
 import pandas as pd
 import random
 import numpy as np
@@ -110,6 +110,129 @@ def get_eligible_staff_sql(cur, session_id):
 
     print('eligible staff sql retrieved ✅')
     return query
+
+def validate_and_fix_group_pattern_coverage(df_staff, context=""):
+    """
+    Validate that each group has at least one staff member assigned to each pattern (A and B).
+    Automatically fixes groups missing coverage by swapping staff between patterns.
+    
+    Strategy:
+    - If a group has only one role (counselors or JCs), split them in half
+    - If a group has both roles, swap the minority role (JCs if counselors > JCs, else counselors)
+    
+    Parameters
+    ----------
+    df_staff : pd.DataFrame
+        Staff dataframe with 'group_id', 'role_id', and 'actual_assignment' columns
+    context : str, optional
+        Context string for logging (e.g., "after initial assignment", "after hardcoded processing")
+    
+    Returns
+    -------
+    pd.DataFrame
+        Updated staff dataframe with fixed pattern assignments
+    """
+    print(f"\nValidating group pattern coverage {context}...")
+    
+    df_staff = df_staff.copy()
+    
+    # Group by group_id and count patterns
+    group_summary = df_staff.groupby('group_id')['actual_assignment'].agg([
+        ('count_A', lambda x: (x == 'A').sum()),
+        ('count_B', lambda x: (x == 'B').sum())
+    ])
+    
+    missing_coverage = []
+    
+    for group_id, row in group_summary.iterrows():
+        if row['count_A'] == 0:
+            missing_coverage.append((group_id, 'A', row['count_A'], row['count_B']))
+        if row['count_B'] == 0:
+            missing_coverage.append((group_id, 'B', row['count_A'], row['count_B']))
+    
+    if missing_coverage:
+        print(f"\n⚠️  WARNING: {len(missing_coverage)} group(s) missing pattern coverage {context}:")
+        for group_id, pattern, count_a, count_b in missing_coverage:
+            print(f"   Group {group_id}: Pattern {pattern} has 0 staff (A={count_a}, B={count_b})")
+        
+        print(f"\nAutomatically fixing pattern coverage...")
+        
+        # Get unique groups that need fixing
+        groups_to_fix = list(set([g[0] for g in missing_coverage]))
+        
+        for group_id in groups_to_fix:
+            group_staff = df_staff[df_staff['group_id'] == group_id].copy()
+            
+            # Skip if only 1 staff in group (can't split)
+            if len(group_staff) == 1:
+                print(f"\n  Group {group_id}: Only 1 staff member - skipping (cannot ensure both pattern coverage)")
+                continue
+            
+            # Count staff by role
+            counselors = group_staff[group_staff['role_id'] == 1005]
+            jcs = group_staff[group_staff['role_id'] == 1006]
+            
+            current_pattern = group_staff['actual_assignment'].iloc[0]  # All same pattern
+            opposite_pattern = 'B' if current_pattern == 'A' else 'A'
+            
+            print(f"\n  Group {group_id}: {len(counselors)} counselors, {len(jcs)} JCs (all in Pattern {current_pattern})")
+            
+            if len(counselors) > 0 and len(jcs) > 0:
+                # Both roles present - swap the minority role
+                if len(counselors) > len(jcs):
+                    # Swap JCs
+                    staff_to_swap = jcs
+                    role_name = "JCs"
+                else:
+                    # Swap counselors
+                    staff_to_swap = counselors
+                    role_name = "counselors"
+                
+                print(f"    Strategy: Swap {len(staff_to_swap)} {role_name} to Pattern {opposite_pattern}")
+                df_staff.loc[staff_to_swap.index, 'actual_assignment'] = opposite_pattern
+                
+            elif len(counselors) > 0:
+                # Only counselors - split in half
+                num_to_swap = len(counselors) // 2
+                if num_to_swap == 0:
+                    num_to_swap = 1  # At least swap one
+                
+                staff_to_swap = counselors.iloc[:num_to_swap]
+                print(f"    Strategy: Split counselors - swap {num_to_swap}/{len(counselors)} to Pattern {opposite_pattern}")
+                df_staff.loc[staff_to_swap.index, 'actual_assignment'] = opposite_pattern
+                
+            elif len(jcs) > 0:
+                # Only JCs - split in half
+                num_to_swap = len(jcs) // 2
+                if num_to_swap == 0:
+                    num_to_swap = 1  # At least swap one
+                
+                staff_to_swap = jcs.iloc[:num_to_swap]
+                print(f"    Strategy: Split JCs - swap {num_to_swap}/{len(jcs)} to Pattern {opposite_pattern}")
+                df_staff.loc[staff_to_swap.index, 'actual_assignment'] = opposite_pattern
+        
+        # Verify the fix worked
+        print(f"\nVerifying fixes...")
+        group_summary_after = df_staff.groupby('group_id')['actual_assignment'].agg([
+            ('count_A', lambda x: (x == 'A').sum()),
+            ('count_B', lambda x: (x == 'B').sum())
+        ])
+        
+        still_missing = []
+        for group_id, row in group_summary_after.iterrows():
+            if row['count_A'] == 0 or row['count_B'] == 0:
+                still_missing.append(group_id)
+        
+        if still_missing:
+            print(f"⚠️  WARNING: {len(still_missing)} group(s) still missing coverage after fix: {still_missing}")
+        else:
+            print(f"✓ All groups now have coverage in both patterns A and B")
+        
+        return df_staff
+    else:
+        print(f"✓ All {len(group_summary)} groups have at least one staff in both patterns A and B")
+        return df_staff
+
 
 def assign_group_patterns(df_eligible_staff):
     ##code author kavin
@@ -1034,6 +1157,9 @@ def build_lunch_job_assignments(
     # Restore the original order from df_eligible_staff_dirty
     df_eligible_staff_clean = df_eligible_staff_combined.loc[df_eligible_staff_dirty.index].copy()
 
+    # Validate and fix group pattern coverage after initial assignment
+    df_eligible_staff_clean = validate_and_fix_group_pattern_coverage(df_eligible_staff_clean, context="after initial pattern assignment")
+
     # ----------------------------------------------------------------------
     # 5. HARD CODED ASSIGNMENTS (pattern jobs, staff game, tie dye, custom)
     # ----------------------------------------------------------------------
@@ -1070,6 +1196,9 @@ def build_lunch_job_assignments(
     
     # Remove duplicates
     hardcoded_staff_ids = list(set(hardcoded_staff_ids))
+    
+    # Validate and fix group pattern coverage after hardcoded assignments
+    df_staff_balanced = validate_and_fix_group_pattern_coverage(df_staff_balanced, context="after hardcoded assignment processing")
     
     # Balance the pattern distribution
     df_staff_balanced = balance_pattern_distribution(df_staff_balanced, hardcoded_staff_ids)
@@ -1250,6 +1379,158 @@ def transform_to_schedule_format(df_final_assignments_enriched):
     df_schedule = df_schedule.fillna('')
     
     return df_schedule
+
+
+def transform_to_multi_week_wide_format(all_week_assignments):
+    """
+    Transform multi-week assignments into a wide format where:
+    - Each unique staff member has one row per week
+    - Days from all weeks are columns (Week 1 M, Week 1 T, ..., Week 2 M, Week 2 T, ...)
+    - Empty cells for weeks/days where staff are not assigned
+    - Includes section headers for COUNSELORS: PATTERN A/B and JUNIOR COUNSELORS: PATTERN A/B
+    
+    Parameters
+    ----------
+    all_week_assignments : list of tuples
+        List of (week_num, df_assignments) tuples where df_assignments has columns:
+        ['staff_id', 'staff_name', 'role_id', 'group_id', 'day_name', 'job_code', 'actual_assignment']
+    
+    Returns
+    -------
+    pd.DataFrame
+        Wide format with staff as rows and week-day combinations as columns
+    """
+    print("\n" + "="*80)
+    print("CREATING MULTI-WEEK WIDE FORMAT")
+    print("="*80)
+    
+    # Day mapping
+    day_mapping = {
+        'monday': 'M',
+        'tuesday': 'T',
+        'wednesday': 'W',
+        'thursday': 'TH',
+        'friday': 'F'
+    }
+    
+    # Collect all unique staff across all weeks
+    all_staff = pd.DataFrame()
+    staff_patterns = {}  # Track each staff's pattern
+    
+    for week_num, df_week in all_week_assignments:
+        staff_info = df_week[['staff_id', 'staff_name', 'role_id', 'group_id', 'actual_assignment']].drop_duplicates()
+        # Store pattern for each staff (use first week's pattern)
+        for _, row in staff_info.iterrows():
+            if row['staff_id'] not in staff_patterns:
+                staff_patterns[row['staff_id']] = row['actual_assignment']
+        
+        if len(all_staff) == 0:
+            all_staff = staff_info
+        else:
+            all_staff = pd.concat([all_staff, staff_info]).drop_duplicates(subset=['staff_id']).reset_index(drop=True)
+    
+    print(f"\nFound {len(all_staff)} unique staff members across all weeks")
+    
+    # Add pattern to all_staff
+    all_staff['pattern'] = all_staff['staff_id'].map(staff_patterns)
+    
+    # Create the base dataframe with all staff
+    result_df = all_staff.copy()
+    
+    # For each week, pivot and add columns
+    for week_num, df_week in all_week_assignments:
+        print(f"Processing Week {week_num}...")
+        
+        # Add day abbreviation
+        df_week = df_week.copy()
+        df_week['day_abbrev'] = df_week['day_name'].str.lower().map(day_mapping)
+        
+        # Pivot: staff as rows, days as columns, job_code as values
+        week_pivot = df_week.pivot_table(
+            index='staff_id',
+            columns='day_abbrev',
+            values='job_code',
+            aggfunc='first'
+        )
+        
+        # Rename columns to include week number
+        week_pivot.columns = [f'Week {week_num} {col}' for col in week_pivot.columns]
+        
+        # Merge with result
+        result_df = result_df.merge(week_pivot, left_on='staff_id', right_index=True, how='left')
+    
+    # Fill NaN with empty strings
+    result_df = result_df.fillna('')
+    
+    # Reorder columns: staff info first, then week columns in order
+    week_cols = [col for col in result_df.columns if col.startswith('Week ')]
+    week_cols.sort(key=lambda x: (int(x.split()[1]), ['M', 'T', 'W', 'TH', 'F'].index(x.split()[2]) if x.split()[2] in ['M', 'T', 'W', 'TH', 'F'] else 999))
+    
+    # Rename columns to full day names with week numbers (e.g., "Monday 1", "Tuesday 1")
+    day_full_names = {
+        'M': 'Monday',
+        'T': 'Tuesday',
+        'W': 'Wednesday',
+        'TH': 'Thursday',
+        'F': 'Friday'
+    }
+    
+    rename_map = {}
+    for col in week_cols:
+        parts = col.split()  # ['Week', '1', 'M']
+        week_num = parts[1]
+        day_abbrev = parts[2]
+        full_day = day_full_names.get(day_abbrev, day_abbrev)
+        rename_map[col] = f"{full_day} {week_num}"
+    
+    result_df = result_df.rename(columns=rename_map)
+    renamed_week_cols = [rename_map[col] for col in week_cols]
+    
+    # Separate by role and pattern
+    counselors = result_df[result_df['role_id'] == 1005].copy()
+    junior_counselors = result_df[result_df['role_id'] == 1006].copy()
+    
+    counselors_a = counselors[counselors['pattern'] == 'A'].sort_values('staff_name')
+    counselors_b = counselors[counselors['pattern'] == 'B'].sort_values('staff_name')
+    junior_counselors_a = junior_counselors[junior_counselors['pattern'] == 'A'].sort_values('staff_name')
+    junior_counselors_b = junior_counselors[junior_counselors['pattern'] == 'B'].sort_values('staff_name')
+    
+    # Drop unwanted columns from data rows
+    cols_to_drop = ['staff_id', 'role_id', 'group_id', 'pattern']
+    for df in [counselors_a, counselors_b, junior_counselors_a, junior_counselors_b]:
+        df.drop(columns=cols_to_drop, inplace=True)
+    
+    # Prepare final column order (only staff_name and day columns)
+    final_columns = ['staff_name'] + renamed_week_cols
+    
+    # Create section headers with all columns filled with empty strings
+    empty_cols = {col: '' for col in final_columns}
+    
+    counselors_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: PATTERN A'}])
+    counselors_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: PATTERN B'}])
+    jc_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: PATTERN A'}])
+    jc_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: PATTERN B'}])
+    blank_row = pd.DataFrame([empty_cols])
+    
+    # Combine all sections
+    final_df = pd.concat([
+        counselors_header,
+        counselors_a[final_columns],
+        blank_row,
+        counselors_b_header,
+        counselors_b[final_columns],
+        blank_row,
+        blank_row,
+        jc_header,
+        junior_counselors_a[final_columns],
+        blank_row,
+        jc_b_header,
+        junior_counselors_b[final_columns]
+    ], ignore_index=True)
+    
+    print(f"\nWide format created with {len(final_df)} rows and {len(renamed_week_cols)} day columns")
+    
+    return final_df
 
 
 def load_lunch_job_config(directory: str, filename: str) -> dict:
@@ -1599,6 +1880,7 @@ def build_multi_week_schedule(conn, cur, directory):
     print("="*80)
     
     all_week_schedules = []
+    all_week_assignments = []  # Store enriched assignments for wide format
     all_debug_outputs = {}  # Store debug outputs per week
     
     for week_idx, config in enumerate(configs):
@@ -1638,14 +1920,20 @@ def build_multi_week_schedule(conn, cur, directory):
             # Store the full debug dictionary for this week
             all_debug_outputs[f'week_{week_num}'] = output
             df_schedule = output["df_schedule"].copy()
+            df_assignments = output["df_final_assignments_enriched"].copy()
         else:
             df_schedule = output.copy()
+            df_assignments = None
         
         # Add week identifier column
         if isinstance(df_schedule, pd.DataFrame):
             df_schedule.insert(0, 'Week', f'Week {week_num}')
         
         all_week_schedules.append(df_schedule)
+        
+        # Store assignments for wide format (only in debug mode)
+        if df_assignments is not None:
+            all_week_assignments.append((week_num, df_assignments))
         
         print(f"\nWeek {week_num} schedule generated successfully ✅")
     
@@ -1660,11 +1948,17 @@ def build_multi_week_schedule(conn, cur, directory):
     print(f"Total weeks: {len(json_files)}")
     print(f"Total rows: {len(df_full_session)}")
     
+    # STEP 5: Create wide format (all weeks as columns)
+    df_wide_format = None
+    if len(all_week_assignments) > 0:
+        df_wide_format = transform_to_multi_week_wide_format(all_week_assignments)
+    
     # Return debug output if requested
     if debug:
         print('\nDEBUG output enabled')
         print('returning DEBUG dictionary with all intermediate DataFrames for each week')
         all_debug_outputs['df_full_session'] = df_full_session
+        all_debug_outputs['df_wide_format'] = df_wide_format
         all_debug_outputs['overall_staff_patterns'] = overall_staff_patterns
         return all_debug_outputs
     

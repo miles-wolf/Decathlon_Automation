@@ -1,57 +1,57 @@
 staff_name,Monday 1,Tuesday 1,Wednesday 1,Thursday 1,Monday 2,Tuesday 2,Wednesday 2,Thursday 2
-COUNSELORS: PATTERN A,,,,,,,,
-Anna Kolpakova,SO,,GR1,SG,CA,,BR,
-Avi Sanchez,PG,,GAGA 1,SG,HS,,CA,
-Carrots and Hummus,FR/VB,,MULTI,SG,FR/VB,,HS,
-Cassie Hickinbotham,RR,,MULTI,SG,RR,,SO,
+COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,
+Anna Kolpakova,CA,,GR1,SG,CA,,GAGA 2,
+Avi Sanchez,MULTI,,SO,SG,GAGA 2,,HS,
+Carrots and Hummus,FR/VB,,CA,SG,FR/VB,,SO,
+Cassie Hickinbotham,CA,,MULTI,SG,MULTI,,MULTI,
 Charlie Premo,CT,,CT,SG,CT,,CT,
-Chromebooks,GAGA 2,,WA,SG,,,WA,
-Donut Wheel,HS,,RR,SG,PG,,FR/VB,
-Ellie Westagate,WA,,PP,SG,SO,,SUB,
-Eytan Goldhaber-Fiebert,MULTI,,WB,SG,PG,,GR1,
-Guy Robbins,HS,,TD,SG,CA,,CA,
-Liam Gerber,PG,,FR/VB,SG,GAGA 2,,MULTI,
-Ori Gillai,WB,,CA,SG,CA,,RR,
-Parker McCabe,SO,,WB,SG,WB,,GAGA 2,
-Ryan Spence,WB,,HS,SG,WB,,CA,
-Tommy Sah,GR1,,CA,SG,HS,,WB,
-Trey Calhoun,BR,,PG,SG,WA,,GAGA 1,
+Chromebooks,HS,,WA,SG,,,WA,
+Donut Wheel,PG,,MULTI,SG,WA,,FR/VB,
+Ellie Westagate,MULTI,,RR,SG,WB,,SUB,
+Eytan Goldhaber-Fiebert,GAGA 2,,GAGA 1,SG,WB,,WB,
+Guy Robbins,SO,,TD,SG,PG,,CA,
+Liam Gerber,HS,,PG,SG,HS,,BR,
+Ori Gillai,WA,,CA,SG,MULTI,,MULTI,
+Parker McCabe,WB,,HS,SG,PG,,RR,
+Ryan Spence,WB,,FR/VB,SG,CA,,CA,
+Tommy Sah,GR1,,PG,SG,CA,,GAGA 1,
+Trey Calhoun,PP,,PP,SG,GAGA 1,,PP,
 ,,,,,,,,
-COUNSELORS: PATTERN B,,,,,,,,
-Emily Jacquemin,,PG,,SG,,SUB,,CA
-Jack Bucich,,CA,,SG,,HS,,CA
-Jackson Dewberry,,WA,,SG,,SO,,PG
-Khalil Qureshi,,CA,,SG,,MULTI,,PP
-Olivia Bocchieri,,RR,,SG,,MULTI,,WA
-Paige Leban,,GR1,,SG,,WA,,FR/VB
+COUNSELORS: TUESDAY/THURSDAY,,,,,,,,
+Emily Jacquemin,,HS,,SG,,CA,,CA
+Jack Bucich,,CA,,SG,,CA,,HS
+Jackson Dewberry,,BR,,SG,,WA,,WA
+Khalil Qureshi,,WA,,SG,,PG,,BR
+Olivia Bocchieri,,CA,,SG,,SUB,,GAGA 2
+Paige Leban,,FR/VB,,SG,,RR,,CA
 ,,,,,,,,
 ,,,,,,,,
-JUNIOR COUNSELORS: PATTERN A,,,,,,,,
-Abraham Paley,MULTI,,TD,SG,SO,,HS,
-Aylin Orens,GAGA 1,,SO,SG,GAGA 1,,WB,
-Ilan Gerber,CA,,TD,SG,MULTI,,SO,
+JUNIOR COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,
+Abraham Paley,CA,,TD,SG,BR,,PG,
+Aylin Orens,RR,,GAGA 2,SG,PP,,WB,
+Ilan Gerber,SUB,,TD,SG,SO,,SO,
 Lilley Stryker,A&C,,A&C,SG,A&C,,A&C,
-Micaela Rubinsky,PP,,PG,SG,BR,,PG,
-Nishka Gollamudi,CA,,BR,SG,GR1,,PP,
-Sahil Qureshi,SUB,,GAGA 2,SG,PP,,PG,
-Yardenne Sternheim,CA,,CA,SG,MULTI,,MULTI,
+Micaela Rubinsky,BR,,WB,SG,SO,,GR1,
+Nishka Gollamudi,PG,,BR,SG,GR1,,CA,
+Sahil Qureshi,GAGA 1,,CA,SG,RR,,HS,
+Yardenne Sternheim,SO,,WB,SG,HS,,PG,
 ,,,,,,,,
-JUNIOR COUNSELORS: PATTERN B,,,,,,,,
-Aditi Rairkar,,MULTI,,SG,,GAGA 1,,GA
-Amiya Garg,,PP,,SG,,GR1,,PG
-Andrew Onodera,,SO,,SG,,GA,,GR1
-Asher Darling,,FR/VB,,SG,,FR/VB,,HS
-Carlos Acosta,,GAGA 1,,SG,,CA,,MULTI
-Carter Leban,,MULTI,,SG,,HS,,SO
-Einav Garten,,HS,,SG,,RR,,GAGA 1
-Eli Sobel,,HS,,SG,,PP,,CA
-Elise Darling,,SO,,SG,,PG,,MULTI
+JUNIOR COUNSELORS: TUESDAY/THURSDAY,,,,,,,,
+Aditi Rairkar,,PG,,SG,,MULTI,,PP
+Amiya Garg,,HS,,SG,,CA,,CA
+Andrew Onodera,,GR1,,SG,,MULTI,,PG
+Asher Darling,,PP,,SG,,SO,,PG
+Carlos Acosta,,PG,,SG,,GAGA 2,,RR
+Carter Leban,,RR,,SG,,GR1,,SO
+Einav Garten,,SO,,SG,,SO,,GAGA 1
+Eli Sobel,,GAGA 2,,SG,,GA,,HS
+Elise Darling,,MULTI,,SG,,HS,,GA
 Ellie Katsav,,WB,,SG,,WB,,WB
-Ethelle Bouvin,,TD,,SG,,SO,,RR
-Jenna Bergendahl,,PG,,SG,,PG,,SO
+Ethelle Bouvin,,TD,,SG,,FR/VB,,MULTI
+Jenna Bergendahl,,GAGA 1,,SG,,HS,,SUB
 Jonah Altschuler,,CT,,SG,,CT,,CT
-Lizzy Moravick,,GAGA 2,,SG,,GAGA 2,,HS
+Lizzy Moravick,,MULTI,,SG,,PG,,FR/VB
 Sabrina Neal,,A&C,,SG,,A&C,,A&C
-Spencer Toland,,CA,,SG,,BR,,SUB
-Tamara Rubinsky,,BR,,SG,,CA,,BR
-Wes Calhoun,,TD,,SG,,CA,,GAGA 2
+Spencer Toland,,CA,,SG,,PP,,GR1
+Tamara Rubinsky,,SO,,SG,,GAGA 1,,SO
+Wes Calhoun,,TD,,SG,,BR,,MULTI

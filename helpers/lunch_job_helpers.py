@@ -1,4 +1,4 @@
-import psycopg2
+﻿import psycopg2
 import pandas as pd
 import random
 import numpy as np
@@ -110,6 +110,129 @@ def get_eligible_staff_sql(cur, session_id):
 
     print('eligible staff sql retrieved ✅')
     return query
+
+def validate_and_fix_group_pattern_coverage(df_staff, context=""):
+    """
+    Validate that each group has at least one staff member assigned to each pattern (A and B).
+    Automatically fixes groups missing coverage by swapping staff between patterns.
+    
+    Strategy:
+    - If a group has only one role (counselors or JCs), split them in half
+    - If a group has both roles, swap the minority role (JCs if counselors > JCs, else counselors)
+    
+    Parameters
+    ----------
+    df_staff : pd.DataFrame
+        Staff dataframe with 'group_id', 'role_id', and 'actual_assignment' columns
+    context : str, optional
+        Context string for logging (e.g., "after initial assignment", "after hardcoded processing")
+    
+    Returns
+    -------
+    pd.DataFrame
+        Updated staff dataframe with fixed pattern assignments
+    """
+    print(f"\nValidating group pattern coverage {context}...")
+    
+    df_staff = df_staff.copy()
+    
+    # Group by group_id and count patterns
+    group_summary = df_staff.groupby('group_id')['actual_assignment'].agg([
+        ('count_A', lambda x: (x == 'A').sum()),
+        ('count_B', lambda x: (x == 'B').sum())
+    ])
+    
+    missing_coverage = []
+    
+    for group_id, row in group_summary.iterrows():
+        if row['count_A'] == 0:
+            missing_coverage.append((group_id, 'A', row['count_A'], row['count_B']))
+        if row['count_B'] == 0:
+            missing_coverage.append((group_id, 'B', row['count_A'], row['count_B']))
+    
+    if missing_coverage:
+        print(f"\n⚠️  WARNING: {len(missing_coverage)} group(s) missing pattern coverage {context}:")
+        for group_id, pattern, count_a, count_b in missing_coverage:
+            print(f"   Group {group_id}: Pattern {pattern} has 0 staff (A={count_a}, B={count_b})")
+        
+        print(f"\nAutomatically fixing pattern coverage...")
+        
+        # Get unique groups that need fixing
+        groups_to_fix = list(set([g[0] for g in missing_coverage]))
+        
+        for group_id in groups_to_fix:
+            group_staff = df_staff[df_staff['group_id'] == group_id].copy()
+            
+            # Skip if only 1 staff in group (can't split)
+            if len(group_staff) == 1:
+                print(f"\n  Group {group_id}: Only 1 staff member - skipping (cannot ensure both pattern coverage)")
+                continue
+            
+            # Count staff by role
+            counselors = group_staff[group_staff['role_id'] == 1005]
+            jcs = group_staff[group_staff['role_id'] == 1006]
+            
+            current_pattern = group_staff['actual_assignment'].iloc[0]  # All same pattern
+            opposite_pattern = 'B' if current_pattern == 'A' else 'A'
+            
+            print(f"\n  Group {group_id}: {len(counselors)} counselors, {len(jcs)} JCs (all in Pattern {current_pattern})")
+            
+            if len(counselors) > 0 and len(jcs) > 0:
+                # Both roles present - swap the minority role
+                if len(counselors) > len(jcs):
+                    # Swap JCs
+                    staff_to_swap = jcs
+                    role_name = "JCs"
+                else:
+                    # Swap counselors
+                    staff_to_swap = counselors
+                    role_name = "counselors"
+                
+                print(f"    Strategy: Swap {len(staff_to_swap)} {role_name} to Pattern {opposite_pattern}")
+                df_staff.loc[staff_to_swap.index, 'actual_assignment'] = opposite_pattern
+                
+            elif len(counselors) > 0:
+                # Only counselors - split in half
+                num_to_swap = len(counselors) // 2
+                if num_to_swap == 0:
+                    num_to_swap = 1  # At least swap one
+                
+                staff_to_swap = counselors.iloc[:num_to_swap]
+                print(f"    Strategy: Split counselors - swap {num_to_swap}/{len(counselors)} to Pattern {opposite_pattern}")
+                df_staff.loc[staff_to_swap.index, 'actual_assignment'] = opposite_pattern
+                
+            elif len(jcs) > 0:
+                # Only JCs - split in half
+                num_to_swap = len(jcs) // 2
+                if num_to_swap == 0:
+                    num_to_swap = 1  # At least swap one
+                
+                staff_to_swap = jcs.iloc[:num_to_swap]
+                print(f"    Strategy: Split JCs - swap {num_to_swap}/{len(jcs)} to Pattern {opposite_pattern}")
+                df_staff.loc[staff_to_swap.index, 'actual_assignment'] = opposite_pattern
+        
+        # Verify the fix worked
+        print(f"\nVerifying fixes...")
+        group_summary_after = df_staff.groupby('group_id')['actual_assignment'].agg([
+            ('count_A', lambda x: (x == 'A').sum()),
+            ('count_B', lambda x: (x == 'B').sum())
+        ])
+        
+        still_missing = []
+        for group_id, row in group_summary_after.iterrows():
+            if row['count_A'] == 0 or row['count_B'] == 0:
+                still_missing.append(group_id)
+        
+        if still_missing:
+            print(f"⚠️  WARNING: {len(still_missing)} group(s) still missing coverage after fix: {still_missing}")
+        else:
+            print(f"✓ All groups now have coverage in both patterns A and B")
+        
+        return df_staff
+    else:
+        print(f"✓ All {len(group_summary)} groups have at least one staff in both patterns A and B")
+        return df_staff
+
 
 def assign_group_patterns(df_eligible_staff):
     ##code author kavin
@@ -859,7 +982,9 @@ def build_lunch_job_assignments(
     staff_to_add=None,
     custom_job_assignments=None,
     debug=False,
-    verbose=False
+    verbose=False,
+    precomputed_staff_patterns=None,
+    week_number=None
 ):
     """
     Master wrapper for generating lunch job assignments.
@@ -872,6 +997,16 @@ def build_lunch_job_assignments(
 
     If debug=True, returns a dictionary of all intermediate DataFrames (including schedule format).
     If verbose=True, prints detailed assignment summaries and staffing checklists.
+    
+    Parameters
+    ----------
+    precomputed_staff_patterns : dict, optional
+        Dictionary mapping staff_id to pattern ('A' or 'B'). When provided, these patterns
+        will be used for staff with hardcoded assignments instead of random assignment.
+        This is computed in multi-week scheduling to ensure consistency across weeks.
+        If None, patterns are assigned randomly for all staff.
+    week_number : int, optional
+        Week number for labeling in multi-week schedules.
     """
 
     # ----------------------------------------------------------------------
@@ -926,69 +1061,104 @@ def build_lunch_job_assignments(
     on="group_id",
     how="left"
      )
-    df_group_patterns = assign_group_patterns(df_eligible_staff)
-    #df_group_patterns.head()
-
-
-    df_eligible_staff_patterns_and_exceptions = df_eligible_staff_with_exceptions.merge(
-        df_group_patterns[["group_id", "base_pattern"]], #pattern lookup ,
-        on="group_id",
-        how="left"
-    )
-
-
-    df_eligible_staff_patterns_and_exceptions["actual_assignment"] = (
-        df_eligible_staff_patterns_and_exceptions.apply(
-            lambda row: 
-                # Counselors (1005) → keep base pattern
-                row["base_pattern"] 
-                if row["role_id"] == 1005 
-                else 
-                # Junior Counselors (1006) → flip the pattern
-                ("A" if row["base_pattern"] == "B" else "B"),
-            axis=1
+    
+    # ----------------------------------------------------------------------
+    # 3. PATTERN ASSIGNMENT - use precomputed patterns if available
+    # ----------------------------------------------------------------------
+    if precomputed_staff_patterns:
+        # Use precomputed patterns (multi-week mode)
+        print(f"\nUsing precomputed patterns for {len(precomputed_staff_patterns)} staff members")
+        df_eligible_staff_with_exceptions['actual_assignment'] = df_eligible_staff_with_exceptions['staff_id'].apply(
+            lambda sid: precomputed_staff_patterns.get(sid, None)
         )
-    )
+        
+        # For staff without precomputed patterns, assign based on group patterns
+        df_group_patterns = assign_group_patterns(df_eligible_staff)
+        df_eligible_staff_with_patterns = df_eligible_staff_with_exceptions.merge(
+            df_group_patterns[["group_id", "base_pattern"]],
+            on="group_id",
+            how="left"
+        )
+        
+        # Fill in missing patterns using group-based logic
+        mask_missing = df_eligible_staff_with_patterns['actual_assignment'].isna()
+        df_eligible_staff_with_patterns.loc[mask_missing, 'actual_assignment'] = (
+            df_eligible_staff_with_patterns.loc[mask_missing].apply(
+                lambda row: 
+                    row["base_pattern"] 
+                    if row["role_id"] == 1005 
+                    else ("A" if row["base_pattern"] == "B" else "B"),
+                axis=1
+            )
+        )
+        
+        df_eligible_staff_dirty = df_eligible_staff_with_patterns
+    else:
+        # Original logic - assign patterns from scratch (single-week mode)
+        df_group_patterns = assign_group_patterns(df_eligible_staff)
 
+        df_eligible_staff_patterns_and_exceptions = df_eligible_staff_with_exceptions.merge(
+            df_group_patterns[["group_id", "base_pattern"]], #pattern lookup ,
+            on="group_id",
+            how="left"
+        )
 
+        df_eligible_staff_patterns_and_exceptions["actual_assignment"] = (
+            df_eligible_staff_patterns_and_exceptions.apply(
+                lambda row: 
+                    # Counselors (1005) → keep base pattern
+                    row["base_pattern"] 
+                    if row["role_id"] == 1005 
+                    else 
+                    # Junior Counselors (1006) → flip the pattern
+                    ("A" if row["base_pattern"] == "B" else "B"),
+                axis=1
+            )
+        )
 
-    df_eligible_staff_dirty = df_eligible_staff_patterns_and_exceptions
+        df_eligible_staff_dirty = df_eligible_staff_patterns_and_exceptions
 
+    # ----------------------------------------------------------------------
+    # 4. EXCEPTION HANDLING - randomize within exception groups
+    # ----------------------------------------------------------------------
     df_eligible_staff_only_exceptions = df_eligible_staff_dirty[~df_eligible_staff_dirty['pattern_exception']]
 
     df_eligible_staff_without_exceptions = df_eligible_staff_dirty[df_eligible_staff_dirty['pattern_exception']]
     
     
-    # assign A/B for rows flagged as exceptions
+    # assign A/B for rows flagged as exceptions (only if not using precomputed patterns)
     df_exceptions = df_eligible_staff_only_exceptions.copy()
 
-    df_exceptions['exception_assignment'] = None
+    if not precomputed_staff_patterns:
+        # Only randomize exceptions if we don't have precomputed patterns
+        df_exceptions['exception_assignment'] = None
 
-    for gid, grp in df_exceptions.groupby('group_id'):
-        idxs = grp.index.tolist()
-        random.shuffle(idxs)
-        n = len(idxs)
-        # decide how many go to A (if odd, pick which side gets the extra at random)
-        if n % 2 == 0:
-            nA = n // 2
-        else:
-            nA = n // 2 + (1 if random.choice(['A', 'B']) == 'A' else 0)
-        a_idxs = idxs[:nA]
-        b_idxs = idxs[nA:]
-        df_exceptions.loc[a_idxs, 'exception_assignment'] = 'A'
-        df_exceptions.loc[b_idxs, 'exception_assignment'] = 'B'
+        for gid, grp in df_exceptions.groupby('group_id'):
+            idxs = grp.index.tolist()
+            random.shuffle(idxs)
+            n = len(idxs)
+            # decide how many go to A (if odd, pick which side gets the extra at random)
+            if n % 2 == 0:
+                nA = n // 2
+            else:
+                nA = n // 2 + (1 if random.choice(['A', 'B']) == 'A' else 0)
+            a_idxs = idxs[:nA]
+            b_idxs = idxs[nA:]
+            df_exceptions.loc[a_idxs, 'exception_assignment'] = 'A'
+            df_exceptions.loc[b_idxs, 'exception_assignment'] = 'B'
 
-    # Update actual_assignment for exception rows
-    df_exceptions['actual_assignment'] = df_exceptions['exception_assignment']
-    df_exceptions.drop(columns=["exception_assignment"], inplace=True)
-
-
+        # Update actual_assignment for exception rows
+        df_exceptions['actual_assignment'] = df_exceptions['exception_assignment']
+        df_exceptions.drop(columns=["exception_assignment"], inplace=True)
 
     # Concatenate exceptions with non-exceptions
     df_eligible_staff_combined = pd.concat([df_eligible_staff_without_exceptions, df_exceptions], ignore_index=False)
 
     # Restore the original order from df_eligible_staff_dirty
     df_eligible_staff_clean = df_eligible_staff_combined.loc[df_eligible_staff_dirty.index].copy()
+
+    # Validate and fix group pattern coverage after initial assignment
+    df_eligible_staff_clean = validate_and_fix_group_pattern_coverage(df_eligible_staff_clean, context="after initial pattern assignment")
 
     # ----------------------------------------------------------------------
     # 5. HARD CODED ASSIGNMENTS (pattern jobs, staff game, tie dye, custom)
@@ -1005,6 +1175,33 @@ def build_lunch_job_assignments(
     staff_to_add=staff_to_add,
     custom_job_assignments=custom_job_assignments
      )
+
+    # ----------------------------------------------------------------------
+    # 5.5. BALANCE PATTERN DISTRIBUTION (avoid swapping hardcoded staff)
+    # ----------------------------------------------------------------------
+    # Collect all staff with hardcoded assignments
+    hardcoded_staff_ids = []
+    if pattern_based_jobs:
+        for staff_list in pattern_based_jobs.values():
+            hardcoded_staff_ids.extend(staff_list)
+    if tie_dye_staff:
+        hardcoded_staff_ids.extend(tie_dye_staff)
+    if custom_job_assignments:
+        if 'all_days' in custom_job_assignments:
+            for staff_list in custom_job_assignments['all_days'].values():
+                hardcoded_staff_ids.extend(staff_list)
+        if 'specific_days' in custom_job_assignments:
+            for assignment in custom_job_assignments['specific_days']:
+                hardcoded_staff_ids.append(assignment[0])  # staff_id is first element
+    
+    # Remove duplicates
+    hardcoded_staff_ids = list(set(hardcoded_staff_ids))
+    
+    # Validate and fix group pattern coverage after hardcoded assignments
+    df_staff_balanced = validate_and_fix_group_pattern_coverage(df_staff_balanced, context="after hardcoded assignment processing")
+    
+    # Balance the pattern distribution
+    df_staff_balanced = balance_pattern_distribution(df_staff_balanced, hardcoded_staff_ids)
 
     # ----------------------------------------------------------------------
     # 6. RANDOM ASSIGNMENTS
@@ -1079,15 +1276,15 @@ def build_lunch_job_assignments(
         return {
             "df_days": df_days,
             "df_lunch_job": df_lunch_job,
-            "df_eligible_staff": df_eligible_staff,
-            "df_eligible_staff_agg":eligible_staff_agg,
-            "df_eligible_staff_dirty":df_eligible_staff_dirty,
-            "df_eligible_staff_clean":df_eligible_staff_clean,
-            "df_staff_balanced": df_staff_balanced,
-            "df_hardcoded_assignments": df_hardcoded_assignments,
-            "df_final_assignments": df_final_assignments,
-            "df_final_assignments_enriched": df_final_assignments_enriched,
-            "df_schedule": df_schedule
+            "df_eligible_staff": df_eligible_staff, # original eligible staff from SQL
+            "df_eligible_staff_agg":eligible_staff_agg, # aggregation used for exception detection
+            "df_eligible_staff_dirty":df_eligible_staff_dirty, # eligible staff before cleaning, with pattern exception column
+            "df_eligible_staff_clean":df_eligible_staff_clean, # eligible staff after cleaning, with final patterns
+            "df_staff_balanced": df_staff_balanced, # balanced staff dataframe after pattern balancing
+            "df_hardcoded_assignments": df_hardcoded_assignments, # hardcoded assignments dataframe
+            "df_final_assignments": df_final_assignments, # all assignments before enrichment, 
+            "df_final_assignments_enriched": df_final_assignments_enriched, # all assignments after enrichment, with staff details
+            "df_schedule": df_schedule # final schedule format output
         }
        
     print('Returning schedule format (staff as rows, days as columns)')
@@ -1184,14 +1381,166 @@ def transform_to_schedule_format(df_final_assignments_enriched):
     return df_schedule
 
 
+def transform_to_multi_week_wide_format(all_week_assignments):
+    """
+    Transform multi-week assignments into a wide format where:
+    - Each unique staff member has one row per week
+    - Days from all weeks are columns (Week 1 M, Week 1 T, ..., Week 2 M, Week 2 T, ...)
+    - Empty cells for weeks/days where staff are not assigned
+    - Includes section headers for COUNSELORS: PATTERN A/B and JUNIOR COUNSELORS: PATTERN A/B
+    
+    Parameters
+    ----------
+    all_week_assignments : list of tuples
+        List of (week_num, df_assignments) tuples where df_assignments has columns:
+        ['staff_id', 'staff_name', 'role_id', 'group_id', 'day_name', 'job_code', 'actual_assignment']
+    
+    Returns
+    -------
+    pd.DataFrame
+        Wide format with staff as rows and week-day combinations as columns
+    """
+    print("\n" + "="*80)
+    print("CREATING MULTI-WEEK WIDE FORMAT")
+    print("="*80)
+    
+    # Day mapping
+    day_mapping = {
+        'monday': 'M',
+        'tuesday': 'T',
+        'wednesday': 'W',
+        'thursday': 'TH',
+        'friday': 'F'
+    }
+    
+    # Collect all unique staff across all weeks
+    all_staff = pd.DataFrame()
+    staff_patterns = {}  # Track each staff's pattern
+    
+    for week_num, df_week in all_week_assignments:
+        staff_info = df_week[['staff_id', 'staff_name', 'role_id', 'group_id', 'actual_assignment']].drop_duplicates()
+        # Store pattern for each staff (use first week's pattern)
+        for _, row in staff_info.iterrows():
+            if row['staff_id'] not in staff_patterns:
+                staff_patterns[row['staff_id']] = row['actual_assignment']
+        
+        if len(all_staff) == 0:
+            all_staff = staff_info
+        else:
+            all_staff = pd.concat([all_staff, staff_info]).drop_duplicates(subset=['staff_id']).reset_index(drop=True)
+    
+    print(f"\nFound {len(all_staff)} unique staff members across all weeks")
+    
+    # Add pattern to all_staff
+    all_staff['pattern'] = all_staff['staff_id'].map(staff_patterns)
+    
+    # Create the base dataframe with all staff
+    result_df = all_staff.copy()
+    
+    # For each week, pivot and add columns
+    for week_num, df_week in all_week_assignments:
+        print(f"Processing Week {week_num}...")
+        
+        # Add day abbreviation
+        df_week = df_week.copy()
+        df_week['day_abbrev'] = df_week['day_name'].str.lower().map(day_mapping)
+        
+        # Pivot: staff as rows, days as columns, job_code as values
+        week_pivot = df_week.pivot_table(
+            index='staff_id',
+            columns='day_abbrev',
+            values='job_code',
+            aggfunc='first'
+        )
+        
+        # Rename columns to include week number
+        week_pivot.columns = [f'Week {week_num} {col}' for col in week_pivot.columns]
+        
+        # Merge with result
+        result_df = result_df.merge(week_pivot, left_on='staff_id', right_index=True, how='left')
+    
+    # Fill NaN with empty strings
+    result_df = result_df.fillna('')
+    
+    # Reorder columns: staff info first, then week columns in order
+    week_cols = [col for col in result_df.columns if col.startswith('Week ')]
+    week_cols.sort(key=lambda x: (int(x.split()[1]), ['M', 'T', 'W', 'TH', 'F'].index(x.split()[2]) if x.split()[2] in ['M', 'T', 'W', 'TH', 'F'] else 999))
+    
+    # Rename columns to full day names with week numbers (e.g., "Monday 1", "Tuesday 1")
+    day_full_names = {
+        'M': 'Monday',
+        'T': 'Tuesday',
+        'W': 'Wednesday',
+        'TH': 'Thursday',
+        'F': 'Friday'
+    }
+    
+    rename_map = {}
+    for col in week_cols:
+        parts = col.split()  # ['Week', '1', 'M']
+        week_num = parts[1]
+        day_abbrev = parts[2]
+        full_day = day_full_names.get(day_abbrev, day_abbrev)
+        rename_map[col] = f"{full_day} {week_num}"
+    
+    result_df = result_df.rename(columns=rename_map)
+    renamed_week_cols = [rename_map[col] for col in week_cols]
+    
+    # Separate by role and pattern
+    counselors = result_df[result_df['role_id'] == 1005].copy()
+    junior_counselors = result_df[result_df['role_id'] == 1006].copy()
+    
+    counselors_a = counselors[counselors['pattern'] == 'A'].sort_values('staff_name')
+    counselors_b = counselors[counselors['pattern'] == 'B'].sort_values('staff_name')
+    junior_counselors_a = junior_counselors[junior_counselors['pattern'] == 'A'].sort_values('staff_name')
+    junior_counselors_b = junior_counselors[junior_counselors['pattern'] == 'B'].sort_values('staff_name')
+    
+    # Drop unwanted columns from data rows
+    cols_to_drop = ['staff_id', 'role_id', 'group_id', 'pattern']
+    for df in [counselors_a, counselors_b, junior_counselors_a, junior_counselors_b]:
+        df.drop(columns=cols_to_drop, inplace=True)
+    
+    # Prepare final column order (only staff_name and day columns)
+    final_columns = ['staff_name'] + renamed_week_cols
+    
+    # Create section headers with all columns filled with empty strings
+    empty_cols = {col: '' for col in final_columns}
+    
+    counselors_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: PATTERN A'}])
+    counselors_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: PATTERN B'}])
+    jc_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: PATTERN A'}])
+    jc_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: PATTERN B'}])
+    blank_row = pd.DataFrame([empty_cols])
+    
+    # Combine all sections
+    final_df = pd.concat([
+        counselors_header,
+        counselors_a[final_columns],
+        blank_row,
+        counselors_b_header,
+        counselors_b[final_columns],
+        blank_row,
+        blank_row,
+        jc_header,
+        junior_counselors_a[final_columns],
+        blank_row,
+        jc_b_header,
+        junior_counselors_b[final_columns]
+    ], ignore_index=True)
+    
+    print(f"\nWide format created with {len(final_df)} rows and {len(renamed_week_cols)} day columns")
+    
+    return final_df
+
+
 def load_lunch_job_config(directory: str, filename: str) -> dict:
     ##author kavin
     """
     Loads the lunch job configuration JSON and returns it
     as a parent dictionary keyed by the original variable names.
 
-    lunch job configuration JSON file should be located
-    from the /config directory.
+    lunch job configuration JSON files should be located
+    from the /config/lunchjob_inputs/{directory} directory.
 
 
     Parameters
@@ -1213,7 +1562,7 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     """
 
 # Resolve the path to the config directory regardless of where it's called from
-    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
+    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/config/lunchjob_inputs/
     file = base_dir / "config" / "lunchjob_inputs" / directory / filename
 
     if not file.exists():
@@ -1242,6 +1591,378 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
 
 
     return data
+
+
+def balance_pattern_distribution(df_staff, hardcoded_staff_ids):
+    """
+    Balance the distribution of staff between patterns A and B by swapping entire groups.
+    
+    This function checks if the pattern distribution is imbalanced (difference > 2).
+    If so, it swaps groups from the larger pattern to the smaller pattern, avoiding
+    any staff with hardcoded assignments.
+    
+    Parameters
+    ----------
+    df_staff : pd.DataFrame
+        Staff dataframe with 'staff_id', 'group_id', and 'actual_assignment' columns
+    hardcoded_staff_ids : list
+        List of staff IDs that have hardcoded assignments and should not be swapped
+        
+    Returns
+    -------
+    pd.DataFrame
+        Updated staff dataframe with balanced pattern assignments
+    """
+    print("\n" + "="*80)
+    print("BALANCING PATTERN DISTRIBUTION")
+    print("="*80)
+    
+    df_staff = df_staff.copy()
+    
+    # Count staff in each pattern
+    pattern_counts = df_staff['actual_assignment'].value_counts().to_dict()
+    count_a = pattern_counts.get('A', 0)
+    count_b = pattern_counts.get('B', 0)
+    
+    print(f"\nInitial pattern distribution:")
+    print(f"  Pattern A: {count_a} staff")
+    print(f"  Pattern B: {count_b} staff")
+    print(f"  Difference: {abs(count_a - count_b)}")
+    
+    # Check if balancing is needed
+    if abs(count_a - count_b) <= 2:
+        print("\n✓ Pattern distribution is already balanced (difference ≤ 2)")
+        return df_staff
+    
+    print(f"\n⚠️  Pattern imbalance detected (difference > 2). Starting rebalancing...")
+    
+    # Determine which pattern has more and which has fewer
+    if count_a > count_b:
+        larger_pattern = 'A'
+        smaller_pattern = 'B'
+    else:
+        larger_pattern = 'B'
+        smaller_pattern = 'A'
+    
+    print(f"  Moving groups from Pattern {larger_pattern} to Pattern {smaller_pattern}")
+    
+    # Get groups that can be swapped (no hardcoded staff)
+    eligible_groups = df_staff[~df_staff['staff_id'].isin(hardcoded_staff_ids)].groupby('group_id')
+    
+    # Calculate group pattern composition
+    group_patterns = []
+    for group_id, group_df in eligible_groups:
+        larger_count = (group_df['actual_assignment'] == larger_pattern).sum()
+        smaller_count = (group_df['actual_assignment'] == smaller_pattern).sum()
+        total = len(group_df)
+        
+        # Only consider groups that have staff in the larger pattern
+        if larger_count > 0:
+            # Priority: groups with more staff in larger pattern
+            group_patterns.append({
+                'group_id': group_id,
+                'larger_count': larger_count,
+                'smaller_count': smaller_count,
+                'total': total,
+                'net_swap': larger_count - smaller_count  # Net reduction in imbalance if swapped
+            })
+    
+    # Sort groups by net_swap (descending) - groups that will reduce imbalance most
+    group_patterns.sort(key=lambda x: x['net_swap'], reverse=True)
+    
+    # Swap groups until difference is ≤ 2
+    swapped_groups = []
+    current_diff = abs(count_a - count_b)
+    
+    for group_info in group_patterns:
+        if current_diff <= 2:
+            break
+        
+        group_id = group_info['group_id']
+        net_swap = group_info['net_swap']
+        
+        # Check if this swap will help reduce the imbalance
+        new_diff = abs(current_diff - 2 * net_swap)
+        
+        # Only swap if it improves or maintains the balance
+        if new_diff < current_diff or (new_diff == current_diff and net_swap > 0):
+            # Swap this group
+            group_mask = (df_staff['group_id'] == group_id) & (~df_staff['staff_id'].isin(hardcoded_staff_ids))
+            df_staff.loc[group_mask, 'actual_assignment'] = df_staff.loc[group_mask, 'actual_assignment'].apply(
+                lambda x: smaller_pattern if x == larger_pattern else larger_pattern
+            )
+            
+            swapped_groups.append({
+                'group_id': group_id,
+                'larger_to_smaller': group_info['larger_count'],
+                'smaller_to_larger': group_info['smaller_count']
+            })
+            
+            current_diff = new_diff
+            print(f"  Swapped group {group_id}: {group_info['larger_count']} staff {larger_pattern}→{smaller_pattern}, "
+                  f"{group_info['smaller_count']} staff {smaller_pattern}→{larger_pattern} (new diff: {current_diff})")
+    
+    # Final count
+    final_pattern_counts = df_staff['actual_assignment'].value_counts().to_dict()
+    final_count_a = final_pattern_counts.get('A', 0)
+    final_count_b = final_pattern_counts.get('B', 0)
+    final_diff = abs(final_count_a - final_count_b)
+    
+    print(f"\nFinal pattern distribution:")
+    print(f"  Pattern A: {final_count_a} staff")
+    print(f"  Pattern B: {final_count_b} staff")
+    print(f"  Difference: {final_diff}")
+    
+    if swapped_groups:
+        print(f"\n✓ Swapped {len(swapped_groups)} group(s) to achieve balance")
+    else:
+        print(f"\n⚠️  Could not improve balance further without affecting hardcoded staff")
+    
+    return df_staff
+
+
+def balance_staff_patterns_across_weeks(configs):
+    """
+    Analyzes hardcoded assignments across all weeks to balance pattern assignments (A/B).
+    
+    This function examines pattern_based_jobs and tie_dye_staff across all weeks
+    to ensure the split between patterns A and B is balanced when considering the full session.
+    
+    Parameters
+    ----------
+    configs : list of dict
+        List of config dictionaries, one per week
+        
+    Returns
+    -------
+    dict
+        Dictionary mapping staff_id to their final pattern assignment ('A' or 'B')
+    """
+    print("\n" + "="*80)
+    print("STEP 1: BALANCING STAFF PATTERNS ACROSS ALL WEEKS")
+    print("="*80)
+    
+    # Track staff assignments across all weeks
+    staff_week_assignments = {}  # {staff_id: [week1_jobs, week2_jobs, ...]}
+    
+    for week_idx, config in enumerate(configs):
+        week_num = week_idx + 1
+        print(f"\nAnalyzing Week {week_num} hardcoded assignments...")
+        
+        # Collect staff from pattern_based_jobs
+        if config.get("pattern_based_jobs"):
+            for job_id, staff_list in config["pattern_based_jobs"].items():
+                for staff_id in staff_list:
+                    if staff_id not in staff_week_assignments:
+                        staff_week_assignments[staff_id] = []
+                    staff_week_assignments[staff_id].append(('pattern_job', week_num, job_id))
+        
+        # Collect staff from tie_dye_staff
+        if config.get("tie_dye_staff"):
+            for staff_id in config["tie_dye_staff"]:
+                if staff_id not in staff_week_assignments:
+                    staff_week_assignments[staff_id] = []
+                staff_week_assignments[staff_id].append(('tie_dye', week_num, None))
+    
+    print(f"\nTotal staff with hardcoded assignments: {len(staff_week_assignments)}")
+    
+    # Count assignments per pattern to balance
+    # For now, we'll assign patterns to balance the overall load
+    # Staff with more assignments across weeks should be distributed evenly
+    
+    staff_assignment_counts = {
+        staff_id: len(assignments) 
+        for staff_id, assignments in staff_week_assignments.items()
+    }
+    
+    # Sort staff by assignment count (most assigned first)
+    sorted_staff = sorted(staff_assignment_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    # Alternating assignment to balance patterns
+    pattern_assignments = {}
+    pattern_counts = {'A': 0, 'B': 0}
+    
+    for staff_id, count in sorted_staff:
+        # Assign to the pattern with fewer staff so far
+        if pattern_counts['A'] <= pattern_counts['B']:
+            pattern_assignments[staff_id] = 'A'
+            pattern_counts['A'] += count
+        else:
+            pattern_assignments[staff_id] = 'B'
+            pattern_counts['B'] += count
+    
+    print(f"\nPattern distribution:")
+    print(f"  Pattern A: {len([p for p in pattern_assignments.values() if p == 'A'])} staff, {pattern_counts['A']} total assignments")
+    print(f"  Pattern B: {len([p for p in pattern_assignments.values() if p == 'B'])} staff, {pattern_counts['B']} total assignments")
+    
+    return pattern_assignments
+
+
+def build_multi_week_schedule(conn, cur, directory):
+    """
+    Master wrapper function for generating lunch job assignments across multiple weeks.
+    
+    This function:
+    1. Automatically discovers all JSON files in the specified directory
+    2. Balances staff patterns across all weeks based on hardcoded assignments
+    3. Generates weekly schedules with consistent pattern assignments
+    4. Combines all weeks into a single output DataFrame
+    
+    Parameters
+    ----------
+    conn : psycopg2.connection
+        Active database connection
+    cur : psycopg2.cursor
+        Active database cursor
+    directory : str
+        Directory name under config/lunchjob_inputs/ containing the week JSON files
+        (e.g., 'test' will look in config/lunchjob_inputs/test/)
+    
+    Returns
+    -------
+    pd.DataFrame
+        Combined schedule for all weeks with a 'Week' column identifier
+    """
+    print("\n" + "="*80)
+    print("MULTI-WEEK LUNCH JOB SCHEDULE GENERATOR")
+    print("="*80)
+    
+    # Resolve the directory path
+    base_dir = Path(__file__).resolve().parents[1]
+    input_dir = base_dir / "config" / "lunchjob_inputs" / directory
+    
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Directory not found: {input_dir}")
+    
+    # Find all JSON files in the directory that contain "week #" pattern in the filename
+    # Week number can be indicated as "week1", "week_2", "week 3", etc.
+    # Example filenames: "lunchjob_week1.json", "week 2 lunchjob.json"
+    import re
+    all_files = []
+    for f in input_dir.glob("*.json"):
+        match = re.search(r'week[\s_]*(\d+)', f.name.lower())
+        if match:
+            all_files.append((f, int(match.group(1))))
+    
+    if not all_files:
+        raise FileNotFoundError(f"No JSON files with 'week #' pattern found in directory: {input_dir}")
+    
+    # Sort files by week number
+    all_files.sort(key=lambda x: x[1])
+    json_files = [f[0].name for f in all_files]
+    
+    print(f"\nFound {len(json_files)} week(s) to process:")
+    for i, filename in enumerate(json_files, 1):
+        print(f"  Week {i}: {filename}")
+    
+    # STEP 1: Load all configs
+    print("\n" + "="*80)
+    print("LOADING CONFIGURATIONS FOR ALL WEEKS")
+    print("="*80)
+    
+    configs = []
+    for i, filename in enumerate(json_files):
+        print(f"\nLoading Week {i+1}: {filename}")
+        config = load_lunch_job_config(directory=directory, filename=filename)
+        configs.append(config)
+    
+    # Use session_id, debug, and verbose from first config (should be same across all weeks)
+    session_id = configs[0]['session_id']
+    debug = configs[0].get("debug", False)
+    verbose = configs[0].get("verbose", False)
+    
+    # STEP 2: Balance staff patterns across all weeks based on hardcoded assignments
+    overall_staff_patterns = balance_staff_patterns_across_weeks(configs)
+    
+    # STEP 3: Loop through each week and generate assignments
+    print("\n" + "="*80)
+    print("STEP 2: GENERATING WEEKLY SCHEDULES")
+    print("="*80)
+    
+    all_week_schedules = []
+    all_week_assignments = []  # Store enriched assignments for wide format
+    all_debug_outputs = {}  # Store debug outputs per week
+    
+    for week_idx, config in enumerate(configs):
+        week_num = week_idx + 1
+        print("\n" + "="*80)
+        print(f"PROCESSING WEEK {week_num}")
+        print("="*80)
+        
+        # Extract config parameters for this week
+        pattern_based_jobs = config["pattern_based_jobs"]
+        staff_game_days = config["staff_game_days"]
+        tie_dye_days = config["tie_dye_days"]
+        tie_dye_staff = config["tie_dye_staff"]
+        staff_to_remove = config["staff_to_remove"]
+        staff_to_add = config["staff_to_add"]
+        custom_job_assignments = config["custom_job_assignments"]
+        
+        output = build_lunch_job_assignments(
+            conn=conn,
+            cur=cur,
+            session_id=session_id,
+            pattern_based_jobs=pattern_based_jobs,
+            staff_game_days=staff_game_days,
+            tie_dye_days=tie_dye_days,
+            tie_dye_staff=tie_dye_staff,
+            staff_to_remove=staff_to_remove,
+            staff_to_add=staff_to_add,
+            custom_job_assignments=custom_job_assignments,
+            debug=debug,
+            verbose=verbose,
+            precomputed_staff_patterns=overall_staff_patterns,
+            week_number=week_num
+        )
+        
+        # Handle both debug and normal output
+        if debug:
+            # Store the full debug dictionary for this week
+            all_debug_outputs[f'week_{week_num}'] = output
+            df_schedule = output["df_schedule"].copy()
+            df_assignments = output["df_final_assignments_enriched"].copy()
+        else:
+            df_schedule = output.copy()
+            df_assignments = None
+        
+        # Add week identifier column
+        if isinstance(df_schedule, pd.DataFrame):
+            df_schedule.insert(0, 'Week', f'Week {week_num}')
+        
+        all_week_schedules.append(df_schedule)
+        
+        # Store assignments for wide format (only in debug mode)
+        if df_assignments is not None:
+            all_week_assignments.append((week_num, df_assignments))
+        
+        print(f"\nWeek {week_num} schedule generated successfully ✅")
+    
+    # STEP 4: Combine all weeks into single schedule
+    print("\n" + "="*80)
+    print("COMBINING ALL WEEKS INTO FINAL SCHEDULE")
+    print("="*80)
+    
+    df_full_session = pd.concat(all_week_schedules, ignore_index=True)
+    
+    print(f"\nFull session schedule complete!")
+    print(f"Total weeks: {len(json_files)}")
+    print(f"Total rows: {len(df_full_session)}")
+    
+    # STEP 5: Create wide format (all weeks as columns)
+    df_wide_format = None
+    if len(all_week_assignments) > 0:
+        df_wide_format = transform_to_multi_week_wide_format(all_week_assignments)
+    
+    # Return debug output if requested
+    if debug:
+        print('\nDEBUG output enabled')
+        print('returning DEBUG dictionary with all intermediate DataFrames for each week')
+        all_debug_outputs['df_full_session'] = df_full_session
+        all_debug_outputs['df_wide_format'] = df_wide_format
+        all_debug_outputs['overall_staff_patterns'] = overall_staff_patterns
+        return all_debug_outputs
+    
+    return df_full_session
 
 
 

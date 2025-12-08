@@ -1348,13 +1348,13 @@ def transform_to_schedule_format(df_final_assignments_enriched):
         df.drop(columns=['role_id', 'actual_assignment'], inplace=True)
     
     # Create section headers
-    counselors_header = pd.DataFrame([['COUNSELORS: PATTERN A', '', '', '', '', '']], 
+    counselors_header = pd.DataFrame([['COUNSELORS: MONDAY/WEDNESDAY', '', '', '', '', '']], 
                                       columns=['staff_name'] + day_columns)
-    counselors_b_header = pd.DataFrame([['COUNSELORS: PATTERN B', '', '', '', '', '']], 
+    counselors_b_header = pd.DataFrame([['COUNSELORS: TUESDAY/THURSDAY', '', '', '', '', '']], 
                                         columns=['staff_name'] + day_columns)
-    jc_header = pd.DataFrame([['JUNIOR COUNSELORS: PATTERN A', '', '', '', '', '']], 
+    jc_header = pd.DataFrame([['JUNIOR COUNSELORS: MONDAY/WEDNESDAY', '', '', '', '', '']], 
                               columns=['staff_name'] + day_columns)
-    jc_b_header = pd.DataFrame([['JUNIOR COUNSELORS: PATTERN B', '', '', '', '', '']], 
+    jc_b_header = pd.DataFrame([['JUNIOR COUNSELORS: TUESDAY/THURSDAY', '', '', '', '', '']], 
                                 columns=['staff_name'] + day_columns)
     blank_row = pd.DataFrame([['', '', '', '', '', '']], 
                               columns=['staff_name'] + day_columns)
@@ -1506,10 +1506,10 @@ def transform_to_multi_week_wide_format(all_week_assignments):
     # Create section headers with all columns filled with empty strings
     empty_cols = {col: '' for col in final_columns}
     
-    counselors_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: PATTERN A'}])
-    counselors_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: PATTERN B'}])
-    jc_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: PATTERN A'}])
-    jc_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: PATTERN B'}])
+    counselors_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: MONDAY/WEDNESDAY'}])
+    counselors_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'COUNSELORS: TUESDAY/THURSDAY'}])
+    jc_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: MONDAY/WEDNESDAY'}])
+    jc_b_header = pd.DataFrame([{**empty_cols, 'staff_name': 'JUNIOR COUNSELORS: TUESDAY/THURSDAY'}])
     blank_row = pd.DataFrame([empty_cols])
     
     # Combine all sections

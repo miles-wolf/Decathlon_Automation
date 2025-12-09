@@ -8,7 +8,6 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# Confirm it's now in your search path
 print("Project root added to sys.path:", project_root)
 
 import pandas as pd
@@ -18,32 +17,25 @@ from helpers import lunch_job_helpers as ljh
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-directory = 'test'  # Directory under config/lunchjob_inputs/ containing week JSON files
+SESSION_ID = 1012  # Session ID to process - will find matching directory automatically
 
 # =============================================================================
 # MAIN EXECUTION
 # =============================================================================
 
-# Retrieve database credentials
-creds = dbc.load_db_read_creds()
-
 # Connect to database
+creds = dbc.load_db_read_creds()
 conn, cur = dbc.connect_to_postgres(creds['db_name'], creds['user'], creds['password'], creds['host'], creds['port'])
 
-# Generate multi-week schedule (automatically processes all JSON files in directory)
-output = ljh.build_multi_week_schedule(conn, cur, directory)
+# Generate multi-week schedule (finds directory by session_id)
+output = ljh.build_multi_week_schedule(conn, cur, session_id=SESSION_ID)
 
-# Handle debug vs normal output
-if isinstance(output, dict):
-    # Debug mode - output contains all intermediate DataFrames
-    print("\nDEBUG mode detected - saving all debug outputs")
-    df_full_session = output['df_full_session']
-    debug_outputs = output  # Keep full dictionary for inspection
-else:
-    # Normal mode - output is just the schedule DataFrame
-    df_full_session = output
+# Extract data (works for both debug and normal mode)
+df_full_session = output['df_full_session']
+df_wide_format = output['df_wide_format']
+debug_outputs = output if 'week_1' in output else None
 
-# Display results
+# Display full schedule
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', None)
@@ -52,21 +44,16 @@ print("FULL SESSION LUNCH JOB SCHEDULE")
 print("="*80)
 print(df_full_session)
 
-# Export to CSV
-df_full_session.to_csv('lunch_job_schedule.csv', index=False)
-print("\nFull session schedule exported to lunch_job_schedule.csv")
+# Export and upload (loads spreadsheet_id from credentials)
+ljh.export_and_upload_schedule(
+    df_full_session=df_full_session,
+    df_wide_format=df_wide_format,
+    sheet_name='Lunchtime Job Schedule'
+)
 
-# If debug mode, save additional outputs
-if isinstance(output, dict):
-    print("\nDebug outputs available in 'debug_outputs' variable")
-    print(f"Available keys: {list(output.keys())}")
-    
-    # Export wide format if available
-    if 'df_wide_format' in output and output['df_wide_format'] is not None:
-        df_wide = output['df_wide_format']
-        df_wide.to_csv('lunch_job_schedule_wide.csv', index=False)
-        print("\nWide format schedule exported to lunch_job_schedule_wide.csv")
-        print(f"Wide format: {len(df_wide)} rows × {len(df_wide.columns)} columns")
+# Show debug info if available
+if debug_outputs is not None:
+    ljh.print_debug_info(debug_outputs)
 
 
 

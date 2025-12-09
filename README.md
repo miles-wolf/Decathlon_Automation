@@ -56,21 +56,36 @@ The following python libraries:
 ---
 ## Configuration
 
-### 1. Database Credentials
+### 1. Credentials
 
 Create a JSON file in the following location:
-config/readonly_creds.json
+config/credentials.json
 
 
 Example:
 
 ```json
 {
-  "db_name": "postgres",
-  "user": "read_only_user",
-  "password": "your_password",
-  "host": "your_host",
-  "port": "5432"
+  "google_service_account": {
+    "type": "service_account",
+    "project_id": "your-project-id",
+    "private_key_id": "key-id",
+    "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+    "client_email": "your-service-account@project.iam.gserviceaccount.com",
+    "client_id": "client-id",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/...",
+    "universe_domain": "googleapis.com"
+  },
+  "database": {
+    "db_name": "postgres",
+    "user": "read_only_user",
+    "password": "your_password",
+    "host": "your_host",
+    "port": "5432"
+  }
 }
 ```
 ### 2. Lunch Job Configuration

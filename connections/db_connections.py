@@ -32,9 +32,9 @@ def connect_to_postgres(db_name, db_user, db_password, db_host, db_port):
 
 def load_db_read_creds() -> dict:
     """
-    Reads 'db_config.json' from the project's /config directory
+    Reads 'credentials.json' from the project's /config directory
     (relative to the Decathlon_Automation repo root)
-    and returns its contents as a dictionary.
+    and returns the database credentials as a dictionary.
 
     Returns
     -------
@@ -43,7 +43,7 @@ def load_db_read_creds() -> dict:
     """
     # Resolve the path to the config directory regardless of where it's called from
     base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
-    file = base_dir / "config" / "readonly_creds.json"
+    file = base_dir / "config" / "credentials.json"
 
     if not file.exists():
         raise FileNotFoundError(f"Config file not found: {file}")
@@ -51,5 +51,5 @@ def load_db_read_creds() -> dict:
     with open(file, "r") as f:
         creds = json.load(f)
 
-    return creds
+    return creds['database']
 

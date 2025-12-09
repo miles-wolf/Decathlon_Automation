@@ -35,6 +35,6 @@
       [9002, 1077, "wednesday"]
     ]
   },
-  "debug": true,
-  "verbose": true
+  "debug": false,
+  "verbose": false
 }

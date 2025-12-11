@@ -12,12 +12,12 @@ print("Project root added to sys.path:", project_root)
 
 import pandas as pd
 from connections import db_connections as dbc
-from helpers import lunch_job_helpers as ljh
+from helpers import ampm_job_helpers as apjh
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-SESSION_ID = 1012  # Session ID to process - will find matching directory automatically
+SESSION_ID = 1015  # Session ID to process
 
 # =============================================================================
 # MAIN EXECUTION
@@ -27,35 +27,21 @@ SESSION_ID = 1012  # Session ID to process - will find matching directory automa
 creds = dbc.load_db_read_creds()
 conn, cur = dbc.connect_to_postgres(creds['db_name'], creds['user'], creds['password'], creds['host'], creds['port'])
 
-# Generate multi-week schedule (finds directory by session_id)
-output = ljh.build_multi_week_schedule(conn, cur, session_id=SESSION_ID)
+# Generate AM/PM job assignments
+df_assignments = apjh.build_ampm_job_assignments(conn, cur, session_id=SESSION_ID)
 
-# Extract data (works for both debug and normal mode)
-df_full_session = output['df_full_session']
-df_wide_format = output['df_wide_format']
-debug_outputs = output if 'week_1' in output else None
-
-# Display full schedule
+# Display assignments
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', None)
 print("\n" + "="*80)
-print("FULL SESSION LUNCH JOB SCHEDULE")
+print("AM/PM JOB ASSIGNMENTS")
 print("="*80)
-print(df_full_session)
+print(df_assignments)
 
-# Export and upload to exports folder (loads spreadsheet_id from credentials)
-ljh.export_and_upload_schedule(
-    df_full_session=df_full_session,
-    df_wide_format=df_wide_format,
-    sheet_name='Lunchtime Job Schedule'
-)
+# Export to CSV and Google Sheets
+apjh.export_ampm_assignments(df_assignments)
 
-# Show debug info if available
-if debug_outputs is not None:
-    ljh.print_debug_info(debug_outputs)
-
-
-
-
-
+print("\n" + "="*80)
+print("AM/PM JOB ASSIGNMENT COMPLETE")
+print("="*80)

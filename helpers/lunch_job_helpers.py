@@ -10,8 +10,12 @@ from googleapiclient.errors import HttpError
 import sys
 
 # Set UTF-8 encoding for print statements to handle Unicode characters
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
+try:
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, OSError):
+    # reconfigure not available in some environments (e.g., Jupyter, IPython)
+    pass
 
 def get_lunch_jobs_sql():
     ##code author kavin
@@ -2415,7 +2419,7 @@ def build_multi_week_schedule(conn, cur, session_id):
 
 def export_and_upload_schedule(df_full_session, df_wide_format, 
                                sheet_name='Lunchtime Job Schedule',
-                               output_dir='.'):
+                               output_dir='exports'):
     """
     Export schedule DataFrames to CSV and upload wide format to Google Sheets.
     Loads spreadsheet_id from credentials.json automatically.
@@ -2428,8 +2432,8 @@ def export_and_upload_schedule(df_full_session, df_wide_format,
         Wide format schedule with weeks as columns
     sheet_name : str
         Name of the sheet tab to upload to
-    output_dir : str
-        Directory to save CSV files (default: current directory)
+    output_dir : str, optional
+        Directory name or path to save CSV files (default: 'exports' in base directory)
         
     Returns
     -------
@@ -2447,6 +2451,10 @@ def export_and_upload_schedule(df_full_session, df_wide_format,
         spreadsheet_id = creds_data['google_sheets']['spreadsheet_id']
     
     print(f"\nLoaded Google Sheets spreadsheet ID from credentials")
+    
+    # Create exports directory in base directory
+    output_dir = base_dir / output_dir
+    output_dir.mkdir(exist_ok=True)
     
     status = {'csv_full': False, 'csv_wide': False, 'google_sheets': False}
     

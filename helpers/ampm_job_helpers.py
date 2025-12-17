@@ -64,7 +64,12 @@ def get_eligible_staff_sql(cur, session_id):
         sts.session_id,
         s.id AS staff_id,
         r.id AS role_id,
-        sts.group_id
+        sts.group_id,
+        s.field_lining_pref,
+        s.years_at_camp,
+        s.gender,
+        s.physical_strength,
+        s.extroverted_level
     FROM camp.staff_to_session AS sts
     INNER JOIN camp.staff AS s
         ON sts.staff_id = s.id
@@ -86,23 +91,120 @@ def get_eligible_staff_sql(cur, session_id):
     return query
 
 
-def assign_staff_to_ampm_jobs(df_staff, df_jobs):
+def load_ampm_job_config(directory: str, filename: str) -> dict:
     """
-    Randomly assign staff to AM/PM jobs, ensuring minimum requirements are met,
-    targeting normal staff levels, and respecting maximum limits.
+    Loads the AM/PM job configuration JSON and returns it.
+    
+    AM/PM job configuration JSON files should be located in the
+    /config/ampmjob_inputs/{directory} directory.
+    
+    Parameters
+    ----------
+    directory : str
+        Directory name under config/ampmjob_inputs/ (e.g., 'session_1012')
+    filename : str
+        JSON filename (e.g., 'ampmjob_1012.json')
+    
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - session_id
+        - hardcoded_job_assignments (dict mapping job_id to list of staff_ids)
+        - custom_job_assignments (dict mapping job_id to list of staff_ids)
+    """
+    # Resolve the path to the config directory
+    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
+    file_path = base_dir / "config" / "ampmjob_inputs" / directory / filename
+    
+    print(f"\nLoading AM/PM job config from: {file_path}")
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"Config file not found: {file_path}")
+    
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    
+    # Convert job_id keys to int for hardcoded_job_assignments
+    if "hardcoded_job_assignments" in data:
+        print('hardcoded_job_assignments detected in input. Reformatting JSON...')
+        data["hardcoded_job_assignments"] = {
+            int(k): [int(x) for x in v]
+            for k, v in data["hardcoded_job_assignments"].items()
+        }
+    
+    # Convert job_id keys to int for custom_job_assignments
+    if "custom_job_assignments" in data:
+        print('custom_job_assignments detected in input. Reformatting JSON...')
+        data["custom_job_assignments"] = {
+            int(k): [int(x) for x in v]
+            for k, v in data["custom_job_assignments"].items()
+        }
+    
+    print(f"Loaded config for session {data.get('session_id')}")
+    return data
+
+
+def is_staff_eligible_for_job(staff, job):
+    """
+    Check if a staff member is eligible for a specific job.
+    
+    Parameters
+    ----------
+    staff : dict
+        Staff member dictionary with keys: staff_name, field_lining_preference, years_at_camp, gender
+    job : dict
+        Job dictionary with keys: job_id, job_code, job_name
+    
+    Returns
+    -------
+    bool
+        True if staff is eligible for the job, False otherwise
+    """
+    # Field lining jobs require field lining preference
+    field_lining_jobs = ['field_line_soccer', 'field_line_baseball', 'field_line_kickball', 
+                        'field_lining', 'line_fields']  # Add all field lining job codes
+    
+    if job.get('job_code') in field_lining_jobs:
+        # Check if staff has field lining preference
+        field_pref = staff.get('field_lining_preference', '')
+        if not field_pref or field_pref.lower() in ['no', 'n', 'false', '0', 'none', '']:
+            return False
+    
+    # Jobs 1145 and 1141 require male staff
+    male_only_jobs = [1145, 1141]
+    if job.get('job_id') in male_only_jobs:
+        staff_gender = staff.get('gender', '').lower()
+        if staff_gender not in ['m', 'male']:
+            return False
+    
+    return True
+
+
+def assign_staff_to_ampm_jobs(df_staff, df_jobs, hardcoded_assignments=None, custom_assignments=None):
+    """
+    Assign staff to AM/PM jobs with special rules for eligibility and seniority.
     
     Strategy:
-    1. Sort jobs by priority (highest first)
-    2. For each job, assign minimum required staff first
-    3. Then try to reach normal staff level
-    4. If extra staff remain, distribute randomly without exceeding max
+    1. Process hardcoded assignments first (using fixed job_ids with staff_ids)
+    2. Process custom assignments (using variable job_ids with staff_ids)
+    3. Sort jobs by priority (highest first)
+    4. For each job, assign minimum required staff first
+    5. Check field lining eligibility for field lining jobs
+    6. Prioritize less senior staff for specific jobs
+    7. Then try to reach normal staff level
+    8. If extra staff remain, distribute randomly without exceeding max
     
     Parameters
     ----------
     df_staff : pd.DataFrame
-        DataFrame with eligible staff (staff_id, staff_name, role_id, group_id)
+        DataFrame with eligible staff (staff_id, staff_name, role_id, group_id, field_lining_preference, years_at_camp)
     df_jobs : pd.DataFrame
         DataFrame with AM/PM jobs (job_id, job_code, job_name, min/normal/max_staff_assigned, job_description)
+    hardcoded_assignments : dict, optional
+        Dictionary mapping job_id (int) to lists of staff_ids (int) for hardcoded assignments
+    custom_assignments : dict, optional
+        Dictionary mapping job_id (int) to lists of staff_ids (int) for custom assignments
     
     Returns
     -------
@@ -112,6 +214,12 @@ def assign_staff_to_ampm_jobs(df_staff, df_jobs):
     print("\n" + "="*80)
     print("ASSIGNING STAFF TO AM/PM JOBS")
     print("="*80)
+    
+    # Convert to empty dicts if None
+    if hardcoded_assignments is None:
+        hardcoded_assignments = {}
+    if custom_assignments is None:
+        custom_assignments = {}
     
     # Create a list of available staff (shuffle for randomness)
     available_staff = df_staff.copy().to_dict('records')
@@ -127,21 +235,141 @@ def assign_staff_to_ampm_jobs(df_staff, df_jobs):
     print(f"\nTotal staff available: {len(available_staff)}")
     print(f"Total jobs to fill: {len(df_jobs)}")
     
+    # PHASE 0A: Process hardcoded assignments (job_id -> staff_ids)
+    print("\n" + "-"*80)
+    print("PHASE 0A: Processing hardcoded assignments")
+    print("-"*80)
+    
+    for job_id, staff_ids in hardcoded_assignments.items():
+        if not staff_ids:
+            continue
+            
+        # Find the job
+        job_match = df_jobs[df_jobs['job_id'] == job_id]
+        if job_match.empty:
+            print(f"  Warning: Job ID {job_id} not found")
+            continue
+        
+        job = job_match.iloc[0]
+        
+        print(f"\n{job['job_name']} (ID: {job_id}) - Hardcoded: {len(staff_ids)} staff")
+        
+        for staff_id in staff_ids:
+            # Find the staff member by ID
+            staff_matches = [s for s in available_staff if s['staff_id'] == staff_id]
+            
+            if not staff_matches:
+                print(f"  Warning: Staff ID {staff_id} not found or already assigned")
+                continue
+            
+            staff = staff_matches[0]
+            
+            assignments.append({
+                'staff_id': staff['staff_id'],
+                'staff_name': staff['staff_name'],
+                'job_id': job_id,
+                'job_code': job['job_code'],
+                'job_name': job['job_name'],
+                'job_description': job['job_description']
+            })
+            
+            available_staff.remove(staff)
+            job_staff_counts[job_id] += 1
+            print(f"  ✓ Assigned {staff['staff_name']} (ID: {staff_id})")
+    
+    print(f"\nStaff remaining after hardcoded assignments: {len(available_staff)}")
+    
+    # PHASE 0B: Process custom assignments (job_id -> staff_ids)
+    print("\n" + "-"*80)
+    print("PHASE 0B: Processing custom assignments")
+    print("-"*80)
+    
+    for job_id, staff_ids in custom_assignments.items():
+        if not staff_ids:
+            continue
+            
+        # Find the job
+        job_match = df_jobs[df_jobs['job_id'] == job_id]
+        if job_match.empty:
+            print(f"  Warning: Job ID {job_id} not found")
+            continue
+        
+        job = job_match.iloc[0]
+        
+        print(f"\n{job['job_name']} (ID: {job_id}) - Custom: {len(staff_ids)} staff")
+        
+        for staff_id in staff_ids:
+            # Find the staff member by ID
+            staff_matches = [s for s in available_staff if s['staff_id'] == staff_id]
+            
+            if not staff_matches:
+                print(f"  Warning: Staff ID {staff_id} not found or already assigned")
+                continue
+            
+            staff = staff_matches[0]
+            
+            assignments.append({
+                'staff_id': staff['staff_id'],
+                'staff_name': staff['staff_name'],
+                'job_id': job_id,
+                'job_code': job['job_code'],
+                'job_name': job['job_name'],
+                'job_description': job['job_description']
+            })
+            
+            available_staff.remove(staff)
+            job_staff_counts[job_id] += 1
+            print(f"  ✓ Assigned {staff['staff_name']} (ID: {staff_id})")
+    
+    print(f"\nStaff remaining after custom assignments: {len(available_staff)}")
+    
     # PHASE 1: Assign minimum required staff to each job
     print("\n" + "-"*80)
     print("PHASE 1: Assigning minimum required staff")
     print("-"*80)
     
+    # Define jobs that should prioritize less senior staff
+    less_senior_jobs = ['large_whiffle', 'small_whiffle', 'camp_cleanup', 
+                       'whiffle_ball_large', 'whiffle_ball_small']
+    less_senior_job_ids = [1149, 1193]  # Jobs by ID that need less senior staff
+    
+    # Define jobs that need physically stronger staff
+    physical_strength_jobs = [1145, 1141]
+    
+    # Define jobs that need more extroverted staff
+    extroverted_jobs = [1105, 1113, 1117, 1101, 1189, 1093]
+    
     for _, job in df_jobs.iterrows():
-        min_needed = job['min_staff_assigned']
+        current_count = job_staff_counts[job['job_id']]
+        min_needed = job['min_staff_assigned'] - current_count  # Account for hardcoded assignments
         job_id = job['job_id']
         
+        if min_needed <= 0:
+            print(f"\n{job['job_name']} ({job['job_code']}) - Already has {current_count} staff (hardcoded)")
+            continue
+        
         print(f"\n{job['job_name']} ({job['job_code']}) - Min: {min_needed}")
+        
+        # Sort staff based on job requirements
+        eligible_staff = [s for s in available_staff if is_staff_eligible_for_job(s, job)]
+        
+        # For jobs requiring physical strength, prioritize staff with higher physical_strength
+        if job_id in physical_strength_jobs:
+            eligible_staff.sort(key=lambda s: s.get('physical_strength', 0), reverse=True)
+            print(f"  Prioritizing physically stronger staff for this job")
+        # For jobs requiring extroversion, prioritize staff with higher extroverted_level
+        elif job_id in extroverted_jobs:
+            eligible_staff.sort(key=lambda s: s.get('extroverted_level', 0), reverse=True)
+            print(f"  Prioritizing more extroverted staff for this job")
+        # For less senior jobs, prioritize staff with fewer years at camp
+        elif job.get('job_code') in less_senior_jobs or job_id in less_senior_job_ids:
+            eligible_staff.sort(key=lambda s: s.get('years_at_camp', 999))
+            print(f"  Prioritizing less senior staff for this job")
         
         assigned_count = 0
         staff_to_remove = []
         
-        for staff in available_staff:
+        for staff in eligible_staff:
             if assigned_count >= min_needed:
                 break
             
@@ -162,7 +390,10 @@ def assign_staff_to_ampm_jobs(df_staff, df_jobs):
         for staff in staff_to_remove:
             available_staff.remove(staff)
         
-        print(f"  Assigned {assigned_count}/{min_needed} minimum staff")
+        if assigned_count < min_needed:
+            print(f"  ⚠️  Warning: Only assigned {assigned_count}/{min_needed} minimum staff (not enough eligible)")
+        else:
+            print(f"  Assigned {assigned_count}/{min_needed} minimum staff")
     
     print(f"\nStaff remaining after minimum assignments: {len(available_staff)}")
     
@@ -183,10 +414,23 @@ def assign_staff_to_ampm_jobs(df_staff, df_jobs):
         
         print(f"\n{job['job_name']} ({job['job_code']}) - Need {additional_needed} more to reach normal ({normal_needed})")
         
+        # Filter eligible staff for this job
+        eligible_staff = [s for s in available_staff if is_staff_eligible_for_job(s, job)]
+        
+        # For jobs requiring physical strength, prioritize staff with higher physical_strength
+        if job_id in physical_strength_jobs:
+            eligible_staff.sort(key=lambda s: s.get('physical_strength', 0), reverse=True)
+        # For jobs requiring extroversion, prioritize staff with higher extroverted_level
+        elif job_id in extroverted_jobs:
+            eligible_staff.sort(key=lambda s: s.get('extroverted_level', 0), reverse=True)
+        # For less senior jobs, prioritize staff with fewer years at camp
+        elif job.get('job_code') in less_senior_jobs or job_id in less_senior_job_ids:
+            eligible_staff.sort(key=lambda s: s.get('years_at_camp', 999))
+        
         assigned_count = 0
         staff_to_remove = []
         
-        for staff in available_staff:
+        for staff in eligible_staff:
             if assigned_count >= additional_needed:
                 break
             
@@ -282,9 +526,12 @@ def assign_staff_to_ampm_jobs(df_staff, df_jobs):
     return df_assignments
 
 
-def build_ampm_job_assignments(conn, cur, session_id):
+def build_ampm_job_assignments(conn, cur, session_id, directory=None, filename=None):
     """
     Master function to build AM/PM job assignments for a session.
+    
+    Loads configuration from JSON file. Can either auto-discover directory by session_id
+    or use explicit directory and filename parameters.
     
     Parameters
     ----------
@@ -294,6 +541,11 @@ def build_ampm_job_assignments(conn, cur, session_id):
         Active database cursor
     session_id : int
         Session ID to process
+    directory : str, optional
+        Directory name under config/ampmjob_inputs/. If None, searches for directory
+        containing session_id in its name (e.g., 'session_1012', 'test_1012')
+    filename : str, optional
+        JSON filename. If None, uses 'ampmjob_{session_id}.json'
     
     Returns
     -------
@@ -304,6 +556,45 @@ def build_ampm_job_assignments(conn, cur, session_id):
     print("AM/PM JOB ASSIGNMENT GENERATOR")
     print("="*80)
     print(f"Session ID: {session_id}")
+    
+    # Auto-discover directory if not provided
+    if directory is None:
+        base_dir = Path(__file__).resolve().parents[1]
+        ampmjob_inputs_dir = base_dir / "config" / "ampmjob_inputs"
+        
+        # Search for directory with session_id in name
+        matching_dirs = [d for d in ampmjob_inputs_dir.iterdir() 
+                         if d.is_dir() and str(session_id) in d.name]
+        
+        if not matching_dirs:
+            raise FileNotFoundError(
+                f"No directory found under {ampmjob_inputs_dir} with session_id '{session_id}' in its name. "
+                f"Available directories: {[d.name for d in ampmjob_inputs_dir.iterdir() if d.is_dir()]}"
+            )
+        
+        if len(matching_dirs) > 1:
+            raise ValueError(
+                f"Multiple directories found with session_id '{session_id}' in name: {[d.name for d in matching_dirs]}. "
+                "Please ensure only one directory matches."
+            )
+        
+        directory = matching_dirs[0].name
+        print(f"\nFound input directory: {directory}")
+    
+    # Use default filename if not provided
+    if filename is None:
+        filename = f"ampmjob_{session_id}.json"
+    
+    # Load configuration from JSON
+    print("\n" + "-"*80)
+    print("Loading AM/PM job configuration...")
+    print("-"*80)
+    config = load_ampm_job_config(directory=directory, filename=filename)
+    hardcoded_assignments = config.get('hardcoded_job_assignments', {})
+    custom_assignments = config.get('custom_job_assignments', {})
+    
+    print(f"Loaded {len(hardcoded_assignments)} hardcoded job assignments")
+    print(f"Loaded {len(custom_assignments)} custom job assignments")
     
     # Load jobs
     print("\n" + "-"*80)
@@ -321,8 +612,13 @@ def build_ampm_job_assignments(conn, cur, session_id):
     df_staff = pd.read_sql(eligible_staff_sql, conn)
     print(f"Found {len(df_staff)} eligible staff")
     
-    # Assign staff to jobs
-    df_assignments = assign_staff_to_ampm_jobs(df_staff, df_jobs)
+    # Assign staff to jobs with hardcoded and custom assignments
+    df_assignments = assign_staff_to_ampm_jobs(
+        df_staff, 
+        df_jobs, 
+        hardcoded_assignments=hardcoded_assignments,
+        custom_assignments=custom_assignments
+    )
     
     return df_assignments
 

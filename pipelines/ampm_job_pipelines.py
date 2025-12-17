@@ -15,33 +15,54 @@ from connections import db_connections as dbc
 from helpers import ampm_job_helpers as apjh
 
 # =============================================================================
-# CONFIGURATION
-# =============================================================================
-SESSION_ID = 1015  # Session ID to process - will find matching directory automatically
-
-# =============================================================================
-# MAIN EXECUTION
+# MAIN PIPELINE FUNCTION
 # =============================================================================
 
-# Connect to database
-creds = dbc.load_db_read_creds()
-conn, cur = dbc.connect_to_postgres(creds['db_name'], creds['user'], creds['password'], creds['host'], creds['port'])
+def run_ampmjob_pipeline(session_id: int):
+    """
+    Run the AM/PM job pipeline with dynamic inputs.
 
-# Generate AM/PM job assignments (loads config from JSON automatically)
-df_assignments = apjh.build_ampm_job_assignments(conn, cur, session_id=SESSION_ID)
+    Args:
+        session_id: Session ID to process - will find matching directory automatically
 
-# Display assignments
-pd.set_option('display.max_rows', None)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', None)
-print("\n" + "="*80)
-print("AM/PM JOB ASSIGNMENTS")
-print("="*80)
-print(df_assignments)
+    Returns:
+        DataFrame with AM/PM job assignments
+    """
+    print("Project root added to sys.path:", project_root)
 
-# Export to CSV and Google Sheets
-apjh.export_ampm_assignments(df_assignments)
+    # Connect to database
+    creds = dbc.load_db_read_creds()
+    conn, cur = dbc.connect_to_postgres(
+        creds['db_name'], creds['user'], creds['password'],
+        creds['host'], creds['port']
+    )
 
-print("\n" + "="*80)
-print("AM/PM JOB ASSIGNMENT COMPLETE")
-print("="*80)
+    # Generate AM/PM job assignments (loads config from JSON automatically)
+    df_assignments = apjh.build_ampm_job_assignments(conn, cur, session_id=session_id)
+
+    # Display assignments
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', None)
+    print("\n" + "="*80)
+    print("AM/PM JOB ASSIGNMENTS")
+    print("="*80)
+    print(df_assignments)
+
+    # Export to CSV and Google Sheets
+    apjh.export_ampm_assignments(df_assignments)
+
+    print("\n" + "="*80)
+    print("AM/PM JOB ASSIGNMENT COMPLETE")
+    print("="*80)
+
+    return df_assignments
+
+
+# =============================================================================
+# DIRECT EXECUTION (for running locally with hardcoded values)
+# =============================================================================
+
+if __name__ == "__main__":
+    SESSION_ID = 1012  # Default session for direct execution
+    run_ampmjob_pipeline(session_id=SESSION_ID)

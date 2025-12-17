@@ -96,13 +96,15 @@ def load_ampm_job_config(directory: str, filename: str) -> dict:
     Loads the AM/PM job configuration JSON and returns it.
     
     AM/PM job configuration JSON files should be located in the
-    /config/ampmjob_inputs/{directory} directory.
+    /config/{directory}/ directory.
     
+    The directory parameter should be the full directory name, typically:
+    ampmjob_inputs_session_{session_id}
+
     Parameters
     ----------
     directory : str
-        Directory name under config/ampmjob_inputs/ (e.g., 'session_1012')
-    filename : str
+        Directory name under config/ (e.g., 'ampmjob_inputs_session_1012')
         JSON filename (e.g., 'ampmjob_1012.json')
     
     Returns
@@ -543,9 +545,9 @@ def build_ampm_job_assignments(conn, cur, session_id, directory=None, filename=N
         Session ID to process
     directory : str, optional
         Directory name under config/ampmjob_inputs/. If None, searches for directory
-        containing session_id in its name (e.g., 'session_1012', 'test_1012')
+        containing session_id in its name (e.g., 'session_1012', 'test_1015')
     filename : str, optional
-        JSON filename. If None, uses 'ampmjob_{session_id}.json'
+        JSON filename. If None, uses 'ampmjob_inputs.json'
     
     Returns
     -------
@@ -561,29 +563,53 @@ def build_ampm_job_assignments(conn, cur, session_id, directory=None, filename=N
     if directory is None:
         base_dir = Path(__file__).resolve().parents[1]
         ampmjob_inputs_dir = base_dir / "config" / "ampmjob_inputs"
-        
+
         # Search for directory with session_id in name
-        matching_dirs = [d for d in ampmjob_inputs_dir.iterdir() 
+        matching_dirs = [d for d in ampmjob_inputs_dir.iterdir()
                          if d.is_dir() and str(session_id) in d.name]
-        
+
         if not matching_dirs:
             raise FileNotFoundError(
                 f"No directory found under {ampmjob_inputs_dir} with session_id '{session_id}' in its name. "
                 f"Available directories: {[d.name for d in ampmjob_inputs_dir.iterdir() if d.is_dir()]}"
             )
-        
+
         if len(matching_dirs) > 1:
             raise ValueError(
                 f"Multiple directories found with session_id '{session_id}' in name: {[d.name for d in matching_dirs]}. "
                 "Please ensure only one directory matches."
             )
-        
+
         directory = matching_dirs[0].name
         print(f"\nFound input directory: {directory}")
     
-    # Use default filename if not provided
+    # Auto-discover filename if not provided
     if filename is None:
-        filename = f"ampmjob_{session_id}.json"
+        base_dir = Path(__file__).resolve().parents[1]
+        config_path = base_dir / "config" / "ampmjob_inputs" / directory
+        
+        # Try default filename first
+        default_filename = "ampmjob_inputs.json"
+        if (config_path / default_filename).exists():
+            filename = default_filename
+        else:
+            # Look for any JSON file in the directory
+            json_files = list(config_path.glob("*.json"))
+            
+            if not json_files:
+                raise FileNotFoundError(
+                    f"No JSON files found in {config_path}. "
+                    f"Expected at least '{default_filename}' or another config file."
+                )
+            
+            if len(json_files) == 1:
+                filename = json_files[0].name
+                print(f"  Using alternate config file: {filename}")
+            else:
+                raise ValueError(
+                    f"Multiple JSON files found in {config_path}: {[f.name for f in json_files]}. "
+                    f"Please specify which file to use with the 'filename' parameter."
+                )
     
     # Load configuration from JSON
     print("\n" + "-"*80)

@@ -1736,13 +1736,14 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     as a parent dictionary keyed by the original variable names.
 
     lunch job configuration JSON files should be located
-    from the /config/lunchjob_inputs/{directory} directory.
-
+    in the /config/lunchjob_inputs/{directory}/ directory.
 
     Parameters
     ----------
+    directory : str
+        Directory name under config/lunchjob_inputs/ (e.g., 'test_1012', 'session_1012')
     filename : str
-        Name of the JSON file (example: 'lunchjob_inputs.json')
+        Name of the JSON file (example: 'lunchjob_week1.json')
 
     Returns
     -------
@@ -1758,7 +1759,7 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     """
 
 # Resolve the path to the config directory regardless of where it's called from
-    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/config/lunchjob_inputs/
+    base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
     file = base_dir / "config" / "lunchjob_inputs" / directory / filename
 
     if not file.exists():
@@ -2712,13 +2713,26 @@ def merge_header_rows(service, spreadsheet_id, sheet_name, num_rows, num_cols):
 def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols):
     """Apply general formatting: borders, alignment, font size, etc."""
     sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
-    
+
     if sheet_id is None:
         print(f"Could not find sheet: {sheet_name}")
         return
+
+    # Read the data to find section header rows
+    result = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!A1:{chr(64 + num_cols)}{num_rows}"
+    ).execute()
+    values = result.get('values', [])
     
+    # Find section header rows
+    section_header_rows = []
+    for row_idx, row in enumerate(values):
+        if row and ('COUNSELORS:' in str(row[0]) or 'JUNIOR COUNSELORS:' in str(row[0])):
+            section_header_rows.append(row_idx)
+
     requests = [
-        # Format header row
+        # Format column header row (row 0) - Light grey background
         {
             'repeatCell': {
                 'range': {
@@ -2730,7 +2744,7 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                 },
                 'cell': {
                     'userEnteredFormat': {
-                        'backgroundColor': {'red': 0.9, 'green': 0.9, 'blue': 0.9},
+                        'backgroundColor': {'red': 0.85, 'green': 0.85, 'blue': 0.85},
                         'textFormat': {
                             'bold': True,
                             'fontSize': 10
@@ -2825,6 +2839,32 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
         }
     ]
     
+    # Add formatting for section headers (COUNSELORS/JUNIOR COUNSELORS) - Light blue background
+    for row_idx in section_header_rows:
+        requests.append({
+            'repeatCell': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_idx,
+                    'endRowIndex': row_idx + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'backgroundColor': {'red': 0.67, 'green': 0.82, 'blue': 0.95},  # Light blue
+                        'textFormat': {
+                            'bold': True,
+                            'fontSize': 11
+                        },
+                        'horizontalAlignment': 'CENTER',
+                        'verticalAlignment': 'MIDDLE'
+                    }
+                },
+                'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+            }
+        })
+
     body = {'requests': requests}
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -2833,10 +2873,100 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
     print("Applied cell formatting (borders, alignment, header styling)")
 
 
+def clear_sheet_formatting(service, spreadsheet_id, sheet_name):
+    """
+    Clear ALL previous formatting from a Google Sheet.
+    This removes:
+    - Conditional formatting rules
+    - Merged cells
+    - Background colors
+    - Borders
+    - Text formatting
+    
+    This is critical for preventing formatting issues when re-uploading data.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Authenticated Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab to clear
+    """
+    print("Clearing previous formatting...")
+    
+    try:
+        # Get sheet ID
+        sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = sheet_metadata.get('sheets', [])
+        sheet_id = None
+        
+        for sheet in sheets:
+            if sheet['properties']['title'] == sheet_name:
+                sheet_id = sheet['properties']['sheetId']
+                break
+        
+        if sheet_id is None:
+            print(f"  Sheet '{sheet_name}' not found, skipping clear formatting")
+            return
+        
+        requests = []
+        
+        # 1. Delete all conditional format rules
+        requests.append({
+            'deleteConditionalFormatRule': {
+                'sheetId': sheet_id,
+                'index': 0
+            }
+        })
+        
+        # 2. Unmerge all cells
+        requests.append({
+            'unmergeCells': {
+                'range': {
+                    'sheetId': sheet_id
+                }
+            }
+        })
+        
+        # 3. Clear all cell formatting (backgrounds, borders, text formatting)
+        requests.append({
+            'repeatCell': {
+                'range': {
+                    'sheetId': sheet_id
+                },
+                'cell': {
+                    'userEnteredFormat': {}
+                },
+                'fields': 'userEnteredFormat'
+            }
+        })
+        
+        # Execute all clear operations
+        # We need to execute them one at a time because some might fail (e.g., no conditional formats to delete)
+        for request in requests:
+            try:
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={'requests': [request]}
+                ).execute()
+            except Exception as e:
+                # Ignore errors for clearing operations that don't apply
+                # (e.g., trying to delete conditional formats when none exist)
+                pass
+        
+        print("  ✓ Cleared all previous formatting")
+        
+    except Exception as e:
+        print(f"  Warning: Could not clear all formatting: {e}")
+        # Don't fail if clearing doesn't work - continue with upload
+
+
 def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Schedule'):
     """
     Upload CSV to Google Sheets and apply formatting.
-    
+
     Parameters
     ----------
     csv_file : str
@@ -2861,11 +2991,13 @@ def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Sche
         print("\nAuthenticating with Google Sheets API...")
         service = authenticate_google_sheets()
         
+        # Clear previous formatting first (critical for preventing formatting issues)
+        clear_sheet_formatting(service, spreadsheet_id, sheet_name)
+
         # Upload CSV data
-        print(f"Uploading data from {csv_file}...")
+        print("Uploading CSV data...")
         num_rows, num_cols = upload_csv_to_sheet(service, spreadsheet_id, sheet_name, csv_file)
-        
-        # Merge header rows
+
         print("Merging header rows...")
         merge_header_rows(service, spreadsheet_id, sheet_name, num_rows, num_cols)
         

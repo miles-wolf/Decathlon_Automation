@@ -17,7 +17,7 @@ from helpers import ampm_job_helpers as apjh
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-SESSION_ID = 1015  # Session ID to process
+SESSION_ID = 1015  # Session ID to process - will find matching directory automatically
 
 # =============================================================================
 # MAIN EXECUTION
@@ -27,7 +27,7 @@ SESSION_ID = 1015  # Session ID to process
 creds = dbc.load_db_read_creds()
 conn, cur = dbc.connect_to_postgres(creds['db_name'], creds['user'], creds['password'], creds['host'], creds['port'])
 
-# Generate AM/PM job assignments
+# Generate AM/PM job assignments (loads config from JSON automatically)
 df_assignments = apjh.build_ampm_job_assignments(conn, cur, session_id=SESSION_ID)
 
 # Display assignments

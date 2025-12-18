@@ -742,11 +742,15 @@ def export_ampm_assignments(df_assignments, output_dir='exports'):
     
     # Load credentials and upload to Google Sheets
     try:
-        creds_file = base_dir / "config" / "credentials.json"
+        # Try environment variable first (Replit), then fall back to credentials.json (local)
+        spreadsheet_id = os.environ.get('GOOGLE_SHEETS_SPREADSHEET_ID')
         
-        with open(creds_file, 'r') as f:
-            creds_data = json.load(f)
-            spreadsheet_id = creds_data['google_sheets']['spreadsheet_id']
+        if not spreadsheet_id:
+            # Fall back to credentials.json for local development
+            creds_file = base_dir / "config" / "credentials.json"
+            with open(creds_file, 'r') as f:
+                creds_data = json.load(f)
+                spreadsheet_id = creds_data['google_sheets']['spreadsheet_id']
         
         print(f"\nUploading to Google Sheets...")
         

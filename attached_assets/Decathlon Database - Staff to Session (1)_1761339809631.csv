@@ -1,0 +1,138 @@
+,Staff First Name,Role ID,Group ID,Session ID,Parent Staff ID,,,,,,,,,staff_name,role_name
+1001,Abraham Paley,1006,1000,1012,,,,,,,,,,Abraham Paley,Junior Counselor
+1001,Abraham Paley,1005,1024,1015,,,,,,,,,,Emily Jacquemin,Counselor
+1005,Adi Learner,1006,1012,1015,,,,,,,,,,Cate Grunewald,Junior Counselor
+1007,Aditi Rairkar,1006,1048,1012,,,,,,,,,,Miles Wolf,Director
+1007,Aditi Rairkar,1006,1044,1015,,,,,,,,,,Matt Segal,Counselor
+1009,Adrian Ruiz,1005,1040,1015,,,,,,,,,,Khalil Qureshi,Junior Counselor
+1015,Alex Yang,1006,1020,1015,,,,,,,,,,Elise Darling,Junior Counselor
+1017,Amiya Garg,1006,1048,1012,,,,,,,,,,Millie Labaron,Counselor
+1019,Andre Hayes,1001,NULL,1015,,,,,,,,,,Trey Calhoun,Counselor
+1021,Andrew Onodera,1006,1020,1012,,,,,,,,,,Ellie Katsav,Junior Counselor
+1023,Ana Denardi,1002,NULL,1015,,,,,,,,,,Tyler Hallada,Junior Counselor
+1025,Anna Kolpakova,1005,1048,1012,,,,,,,,,,Neal Swank,Director
+1027,Annie Aliashvili,1006,1040,1015,,,,,,,,,,Khalil Qureshi,Junior Counselor
+1029,Asher Darling,1006,1004,1012,,,,,,,,,,Alex Yang,Junior Counselor
+1031,Ashley Sarkosh,1005,1060,1015,,,,,,,,,,Sabrina Neal,Junior Counselor
+1033,Avi Sanchez,1005,1004,1012,,,,,,,,,,Amiya Garg,Junior Counselor
+1033,Avi Sanchez,1005,1016,1015,,,,,,,,,,Dylan Chow,Counselor
+1035,Aylin Orens,1006,1044,1012,,,,,,,,,,Matthew Wrenn,Junior Counselor
+1041,Cami Melcher,1005,1056,1015,,,,,,,,,,Paige Leban,Counselor
+1043,Carlos Acosta,1006,1008,1012,,,,,,,,,,Cami Melcher,Counselor
+1043,Carlos Acosta,1006,1000,1015,,,,,,,,,,Abraham Paley,Counselor
+1045,Carter Leban,1006,1032,1012,,,,,,,,,,Hana Dvorak,Director
+1047,Cassie Hickinbotham,1005,1040,1012,,,,,,,,,,Liam Gerber,Counselor
+1047,Cassie Hickinbotham,1005,1040,1015,,,,,,,,,,Liam Gerber,Counselor
+1049,Cate Grunewald,1006,1004,1015,,,,,,,,,,Andrew Onodera,Junior Counselor
+1051,Celina,1002,NULL,1012,,,,,,,,,,Wes Calhoun,Junior Counselor
+1051,Celina,1005,1000,1015,,,,,,,,,,Adi Learner,Junior Counselor
+1053,Charlie Premo,1005,1020,1012,,,,,,,,,,Ellie Westagate,Counselor
+1053,Charlie Premo,1005,1032,1015,,,,,,,,,,Ilan Gerber,Junior Counselor
+1055,Chris Null,1001,NULL,1012,,,,,,,,,,Wes Calhoun,Junior Counselor
+1055,Chris Null,1001,NULL,1015,,,,,,,,,,Yardenne Sternheim,Junior Counselor
+1057,Dana Manor,1006,1044,1015,,,,,,,,,,Max Gotham,Junior Counselor
+1059,Danny Swank,1012,NULL,1012,,,,,,,,,,Yardenne Sternheim,Junior Counselor
+1059,Danny Swank,1005,1036,1015,,,,,,,,,,Jackson Dewberry,Counselor
+1061,Dylan Chow,1005,1020,1015,,,,,,,,,,Ellie Westagate,Counselor
+1063,Einav Garten,1006,1056,1012,,,,,,,,,,Parker McCabe,Counselor
+1065,Eli Sobel,1006,1016,1012,,,,,,,,,,Einav Garten,Junior Counselor
+1067,Elise Darling,1006,1004,1012,,,,,,,,,,Ana Denardi,Director
+1069,Ellie Katsav,1006,1040,1012,,,,,,,,,,Liav Shanava,Junior Counselor
+1071,Ellie Westagate,1005,1060,1012,,,,,,,,,,Sahil Qureshi,Junior Counselor
+1071,Ellie Westagate,1005,1040,1015,,,,,,,,,,Lilley Stryker,Junior Counselor
+1073,Emily Jacquemin,1005,1044,1012,,,,,,,,,,Max Kreman,Junior Counselor
+1073,Emily Jacquemin,1005,1048,1015,,,,,,,,,,Neal Swank,Director
+1075,Ethelle Bouvin,1006,1006,1012,,,,,,,,,,Avi Sanchez,Counselor
+1077,Evan Denardi,1006,1008,1015,,,,,,,,,,Carlos Acosta,Junior Counselor
+1079,Eytan Goldhaber-Fiebert,1005,1016,1012,,,,,,,,,,Eli Sobel,Junior Counselor
+1081,Ezra Rozenberg,1006,1004,1015,,,,,,,,,,Anna Kolpakova,Counselor
+1083,Frankie Jones,1006,1056,1015,,,,,,,,,,Parker McCabe,Junior Counselor
+1087,Guy Robbins,1005,1006,1012,,,,,,,,,,Avi Sanchez,Counselor
+1087,Guy Robbins,1005,1008,1015,,,,,,,,,,Carlos Acosta,Junior Counselor
+1089,Hana Dvorak,1001,NULL,1012,,,,,,,,,,Yasmin Dastmalchi,Junior Counselor
+1089,Hana Dvorak,1001,NULL,1015,,,,,,,,,,Zoe Tarbell,Junior Counselor
+1091,Ilan Gerber,1006,1006,1012,,,,,,,,,,Aylin Orens,Junior Counselor
+1093,Jack Bucich,1005,1036,1012,,,,,,,,,,Jenna Bergendahl,Junior Counselor
+1095,Jackson Dewberry,1005,1012,1012,,,,,,,,,,Celina ,Director
+1095,Jackson Dewberry,1005,1012,1015,,,,,,,,,,Celina ,Counselor
+1097,Jenna Bergendahl,1006,1008,1012,,,,,,,,,,Carter Leban,Junior Counselor
+1099,Jonah Altschuler,1006,1012,1012,,,,,,,,,,Charlie Premo,Counselor
+1101,Jonothan Sokol,1006,1026,1015,,,,,,,,,,Eytan Goldhaber-Fiebert,Counselor
+1105,Khalil Qureshi,1005,1028,1012,,,,,,,,,,Guy Robbins,Counselor
+1105,Khalil Qureshi,1006,1036,1015,,,,,,,,,,Jonah Altschuler,Junior Counselor
+1105,Khalil Qureshi,1006,1026,1015,,,,,,,,,,Ezra Rozenberg,Junior Counselor
+1107,Liam Gerber,1005,1008,1012,,,,,,,,,,Cassie Hickinbotham,Counselor
+1107,Liam Gerber,1005,1012,1015,,,,,,,,,,Charlie Premo,Counselor
+1109,Liav Shanava,1006,1004,1015,,,,,,,,,,Annie Aliashvili,Junior Counselor
+1111,Lilley Stryker,1006,1052,1012,,,,,,,,,,Noah Chan,Junior Counselor
+1111,Lilley Stryker,1005,1044,1015,,,,,,,,,,Megan Tarbell,Junior Counselor
+1113,Lizzy Moravick,1006,1040,1012,,,,,,,,,,Lilley Stryker,Counselor
+1115,Matt Segal,1005,1000,1012,,,,,,,,,,Aditi Rairkar,Junior Counselor
+1117,Matthew Wrenn,1006,1024,1015,,,,,,,,,,Emily Jacquemin,Counselor
+1119,Max Gotham,1006,1012,1015,,,,,,,,,,Chris Null,Director
+1121,Max Kreman,1006,1012,1015,,,,,,,,,,Chris Null,Director
+1123,Megan Tarbell,1006,1048,1015,,,,,,,,,,Nishka Gollamudi,Junior Counselor
+1125,Micaela Rubinsky,1006,1052,1012,,,,,,,,,,Nora Kelman,Junior Counselor
+1127,Miles Wolf,1003,1064,1012,,,,,,,,,,Tapan Dave,Director
+1127,Miles Wolf,1003,1064,1015,,,,,,,,,,Tapan Dave,Director
+1129,Millie Labaron,1012,NULL,1012,,,,,,,,,,Andre Hayes,Director
+1129,Millie Labaron,1005,1004,1015,,,,,,,,,,Asher Darling,Junior Counselor
+1131,Neal Swank,1001,NULL,1012,,,,,,,,,,,
+1131,Neal Swank,1001,NULL,1015,,,,,,,,,,,
+1133,Nishka Gollamudi,1006,1044,1012,,,,,,,,,,Micaela Rubinsky,Junior Counselor
+1133,Nishka Gollamudi,1006,1008,1015,,,,,,,,,,Cassie Hickinbotham,Counselor
+1135,Noah Chan,1006,1000,1015,,,,,,,,,,Aditi Rairkar,Junior Counselor
+1137,Nora Kelman,1006,1052,1015,,,,,,,,,,Ori Gillai,Counselor
+1139,Ori Gillai,1005,1028,1012,,,,,,,,,,Guy Robbins,Counselor
+1141,Olivia Bocchieri,1005,1052,1012,,,,,,,,,,Olivia Bocchieri,Counselor
+1141,Olivia Bocchieri,1005,1052,1015,,,,,,,,,,Olivia Bocchieri,Counselor
+1143,Paige Leban,1005,1058,1012,,,,,,,,,,Ryan Spence,Counselor
+1145,Parker McCabe,1005,1056,1012,,,,,,,,,,Roman Sargis,Junior Counselor
+1145,Parker McCabe,1006,1004,1015,,,,,,,,,,Ashley Sarkosh,Counselor
+1147,Roman Sargis,1006,1028,1015,,,,,,,,,,Hana Dvorak,Director
+1149,Ryan Spence,1005,1024,1012,,,,,,,,,,Ethelle Bouvin,Junior Counselor
+1149,Ryan Spence,1004,NULL,1015,,,,,,,,,,,
+1151,Sabrina Neal,1006,1060,1012,,,,,,,,,,Spencer Toland,Junior Counselor
+1153,Sahil Qureshi,1006,1012,1012,,,,,,,,,,Dana Manor,Junior Counselor
+1155,Spencer Toland,1006,1024,1012,,,,,,,,,,Evan Denardi,Junior Counselor
+1157,Tamara Rubinsky,1006,1048,1012,,,,,,,,,,Nishka Gollamudi,Junior Counselor
+1159,Tapan Dave,1003,1066,1012,,,,,,,,,,TJ ,Counselor
+1159,Tapan Dave,1003,1066,1015,,,,,,,,,,Tommy Sah,Counselor
+1161,TJ,1005,1036,1015,,,,,,,,,,Jonothan Sokol,Junior Counselor
+1163,Tommy Sah,1005,1032,1012,,,,,,,,,,Jack Bucich,Counselor
+1165,Trey Calhoun,1005,1036,1012,,,,,,,,,,Khalil Qureshi,Counselor
+1167,Tyler Hallada,1006,1032,1015,,,,,,,,,,Jackson Dewberry,Counselor
+1171,Wes Calhoun,1006,1000,1012,,,,,,,,,,Adrian Ruiz,Counselor
+1171,Wes Calhoun,1006,1026,1015,,,,,,,,,,Frankie Jones,Junior Counselor
+1173,Yardenne Sternheim,1006,1058,1012,,,,,,,,,,Ryan Spence,Director
+1173,Yardenne Sternheim,1006,1044,1015,,,,,,,,,,Miles Wolf,Director
+1175,Yasmin Dastmalchi,1006,1040,1015,,,,,,,,,,Lizzy Moravick,Junior Counselor
+1177,Zoe Tarbell,1006,1060,1015,,,,,,,,,,Tamara Rubinsky,Junior Counselor
+1179,Louis Fischl,1011,NULL,1012,,,,,,,,,,,
+1181,Evan Chen,1011,NULL,1012,,,,,,,,,,,
+1183,Ehran Namer,1011,NULL,1012,,,,,,,,,,,
+1185,Anthony Guardado,1011,NULL,1012,,,,,,,,,,,
+1187,Nicolas Vambenepe,1011,NULL,1012,,,,,,,,,,,
+1189,Dominic Rinaldi,1011,NULL,1012,,,,,,,,,,,
+1191,Blake Stout,1011,NULL,1012,,,,,,,,,,,
+1193,Vikram Rajagopalan,1011,NULL,1012,,,,,,,,,,,
+1195,David Santiago,1011,NULL,1012,,,,,,,,,,,
+1197,Gabriel Bernstein,1011,NULL,1012,,,,,,,,,,,
+1199,Greg Goody,1011,NULL,1012,,,,,,,,,,,
+1201,Ruth Litchenberg,1011,NULL,1012,,,,,,,,,,,
+1203,Walter Guzman,1011,NULL,1015,,,,,,,,,,,
+1205,Tyler Cheung,1011,NULL,1015,,,,,,,,,,,
+1207,Braxton Chian,1011,NULL,1015,,,,,,,,,,,
+1209,Aner Rozensweig,1011,NULL,1015,,,,,,,,,,,
+1211,Armaan Toosi,1011,NULL,1015,,,,,,,,,,,
+1213,Sanvi Mehta,1011,NULL,1015,,,,,,,,,,,
+1215,Yonathan Hargil,1011,NULL,1015,,,,,,,,,,,
+1217,Adelie Dyer,1011,NULL,1015,,,,,,,,,,,
+1219,Recca Wawda,1011,NULL,1015,,,,,,,,,,,
+1221,Adam Afa Al-Refaee,1011,NULL,1015,,,,,,,,,,,
+1223,Adi Lerner,1011,NULL,1015,,,,,,,,,,,
+1225,Paola Ara Lopez-Breton,1011,NULL,1015,,,,,,,,,,,
+1227,Amaya Puckett,1011,NULL,1015,,,,,,,,,,,
+1229,Ashley Macek,1011,NULL,1015,,,,,,,,,,,
+1231,Marin Hatfield,1011,NULL,1015,,,,,,,,,,,
+1233,Zara Punjabi,1011,NULL,1015,,,,,,,,,,,

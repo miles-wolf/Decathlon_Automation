@@ -1,0 +1,41 @@
+table_name,column_name,data_type,description
+camp.grades,id,bigint identity,Primary key for grade
+camp.grades,name,character varying,Grade name
+camp.grades,created_at,timestamp with time zone,Record creation timestamp
+camp.group,id,bigint identity,Primary key for group
+camp.group,group_number,numeric,Numeric group identifier
+camp.group,created_at,timestamp with time zone,Record creation timestamp
+camp.job,id,bigint identity,Primary key for job
+camp.job,code,text,Unique job code identifier
+camp.job,name,text,Job name or title
+camp.job,min_staff_assigned,integer,Minimum number of staff assigned
+camp.job,normal_staff_assigned,integer,Normal number of staff assigned
+camp.job,max_staff_assigned,integer,Maximum number of staff assigned
+camp.job,job_description,text,Job description details
+camp.job,priority,bigint,Job priority value
+camp.job,created_at,timestamp with time zone,Record creation timestamp
+camp.job,job_type,character varying,"Type of job (e.g. lunch, field, etc.)"
+camp.role,id,bigint identity,Primary key for role
+camp.role,name,character varying,Role name or title
+camp.role,created_at,timestamp with time zone,Record creation timestamp
+camp.session,id,integer identity,Primary key for session
+camp.session,session_number,bigint,Session number identifier
+camp.session,start_date,date,Session start date
+camp.session,end_date,date,Session end date
+camp.session,created_at,timestamp with time zone,Record creation timestamp
+camp.staff,id,bigint identity,Primary key for staff
+camp.staff,first_name,character varying,Staff first name
+camp.staff,last_name,character varying,Staff last name
+camp.staff,age,smallint,Staff age
+camp.staff,gender,character varying,Staff gender
+camp.staff,years_at_camp,smallint,Number of years at camp
+camp.staff,physical_strength,smallint,Staff physical strength rating
+camp.staff,extroverted_level,smallint,Staff extroversion rating
+camp.staff,field_lining_pref,boolean,Preference for field lining tasks
+camp.staff,created_at,timestamp with time zone,Record creation timestamp
+camp.staff_to_session,id,bigint identity,Primary key for staff_to_session
+camp.staff_to_session,staff_id,bigint,Foreign key to camp.staff
+camp.staff_to_session,role_id,bigint,Foreign key to camp.role
+camp.staff_to_session,group_id,bigint,Foreign key to camp.group
+camp.staff_to_session,session_id,bigint,Foreign key to camp.session
+camp.staff_to_session,parent_staff_id,bigint,Foreign key to parent staff (if applicable)

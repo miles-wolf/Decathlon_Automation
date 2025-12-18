@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings } from "lucide-react";
+import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/ui/combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,14 +62,24 @@ interface JobAssignment {
   staffIds: number[];
 }
 
+interface CustomStaff {
+  staff_id: number;
+  name: string;
+  gender: string;
+  custom_job_assignment: number | null;
+}
+
 export default function AMPMJobs() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [hardcodedAssignments, setHardcodedAssignments] = useState<JobAssignment[]>([]);
   const [customAssignments, setCustomAssignments] = useState<JobAssignment[]>([]);
+  const [staffToRemove, setStaffToRemove] = useState<number[]>([]);
+  const [staffToAdd, setStaffToAdd] = useState<CustomStaff[]>([]);
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
   const [configOpen, setConfigOpen] = useState(true);
+  const [staffCounter, setStaffCounter] = useState(9900);
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -204,6 +215,67 @@ export default function AMPMJobs() {
     }));
   };
 
+  // Staff to remove handlers
+  const handleAddStaffToRemove = (staffId: string) => {
+    const id = parseInt(staffId);
+    if (!staffToRemove.includes(id)) {
+      setStaffToRemove([...staffToRemove, id]);
+    }
+  };
+
+  const handleRemoveFromRemoveList = (staffId: number) => {
+    setStaffToRemove(staffToRemove.filter(id => id !== staffId));
+  };
+
+  // Custom staff (staff_to_add) handlers
+  const [newCustomStaff, setNewCustomStaff] = useState<{
+    name: string;
+    gender: string;
+    custom_job_assignment: string;
+  }>({
+    name: "",
+    gender: "M",
+    custom_job_assignment: "",
+  });
+
+  const handleAddCustomStaff = () => {
+    if (!newCustomStaff.name.trim()) {
+      toast({
+        title: "Name Required",
+        description: "Please enter a staff name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newStaff: CustomStaff = {
+      staff_id: staffCounter,
+      name: newCustomStaff.name.trim(),
+      gender: newCustomStaff.gender,
+      custom_job_assignment: newCustomStaff.custom_job_assignment 
+        ? parseInt(newCustomStaff.custom_job_assignment) 
+        : null,
+    };
+
+    setStaffToAdd([...staffToAdd, newStaff]);
+    setStaffCounter(prev => prev + 1);
+    setNewCustomStaff({ name: "", gender: "M", custom_job_assignment: "" });
+    
+    toast({
+      title: "Staff Added",
+      description: `${newStaff.name} added to custom staff list`,
+    });
+  };
+
+  const handleRemoveCustomStaff = (staffId: number) => {
+    setStaffToAdd(staffToAdd.filter(s => s.staff_id !== staffId));
+  };
+
+  // Get filtered staff options (exclude removed staff)
+  const filteredStaffOptions = useMemo(() => {
+    return staffOptions.filter(s => !staffToRemove.includes(parseInt(s.value)));
+  }, [staffOptions, staffToRemove]);
+
   // Convert assignments to the format expected by the backend (job_id -> [staff_ids])
   const buildAssignmentPayload = (assignments: JobAssignment[]) => {
     const result: Record<string, number[]> = {};
@@ -237,6 +309,8 @@ export default function AMPMJobs() {
 
     logStream.info(`Hardcoded assignments: ${Object.keys(hardcodedPayload).length} jobs`);
     logStream.info(`Custom assignments: ${Object.keys(customPayload).length} jobs`);
+    logStream.info(`Staff to remove: ${staffToRemove.length}`);
+    logStream.info(`Custom staff to add: ${staffToAdd.length}`);
 
     try {
       logStream.info("Preparing request...");
@@ -246,6 +320,8 @@ export default function AMPMJobs() {
         sessionId: selectedSessionId,
         hardcodedJobAssignments: hardcodedPayload,
         customJobAssignments: customPayload,
+        staffToRemove: staffToRemove,
+        staffToAdd: staffToAdd,
       });
 
       const data = await response.json();
@@ -485,7 +561,7 @@ export default function AMPMJobs() {
                                 ))}
                               </div>
                               <Combobox
-                                options={staffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
+                                options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
                                 placeholder="Add staff..."
                                 onValueChange={(value: string) => handleAddStaffToHardcoded(assignment.jobId, value)}
                                 testId={`combobox-add-hardcoded-staff-${assignment.jobId}`}
@@ -548,7 +624,7 @@ export default function AMPMJobs() {
                                 ))}
                               </div>
                               <Combobox
-                                options={staffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
+                                options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
                                 placeholder="Add staff..."
                                 onValueChange={(value: string) => handleAddStaffToCustom(assignment.jobId, value)}
                                 testId={`combobox-add-custom-staff-${assignment.jobId}`}
@@ -559,11 +635,141 @@ export default function AMPMJobs() {
                       )}
                     </div>
 
+                    {/* Staff to Remove */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <UserMinus className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <h3 className="text-sm font-medium">Staff to Exclude</h3>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Exclude staff from this session's assignments
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <Combobox
+                            options={staffOptions.filter(s => !staffToRemove.includes(parseInt(s.value)))}
+                            placeholder="Select staff to exclude..."
+                            onValueChange={handleAddStaffToRemove}
+                            testId="combobox-staff-to-remove"
+                          />
+                        </div>
+                      </div>
+
+                      {staffToRemove.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                          {staffToRemove.map((staffId) => (
+                            <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
+                              {getStaffName(staffId)}
+                              <button
+                                onClick={() => handleRemoveFromRemoveList(staffId)}
+                                className="ml-1 hover:text-destructive"
+                                data-testid={`button-unexclude-staff-${staffId}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Custom Staff to Add */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <UserPlus className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <h3 className="text-sm font-medium">Add Custom Staff</h3>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Add staff members not in the database with optional job assignment
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="border rounded-lg p-3 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="custom-staff-name" className="text-xs">Name</Label>
+                            <Input
+                              id="custom-staff-name"
+                              placeholder="Staff name"
+                              value={newCustomStaff.name}
+                              onChange={(e) => setNewCustomStaff(prev => ({ ...prev, name: e.target.value }))}
+                              data-testid="input-custom-staff-name"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="custom-staff-gender" className="text-xs">Gender</Label>
+                            <Select
+                              value={newCustomStaff.gender}
+                              onValueChange={(value) => setNewCustomStaff(prev => ({ ...prev, gender: value }))}
+                            >
+                              <SelectTrigger id="custom-staff-gender" data-testid="select-custom-staff-gender">
+                                <SelectValue placeholder="Gender" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="M">Male</SelectItem>
+                                <SelectItem value="F">Female</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Job Assignment (optional)</Label>
+                            <Combobox
+                              options={jobOptions}
+                              placeholder="Assign to job..."
+                              value={newCustomStaff.custom_job_assignment}
+                              onValueChange={(value: string) => setNewCustomStaff(prev => ({ ...prev, custom_job_assignment: value }))}
+                              testId="combobox-custom-staff-job"
+                            />
+                          </div>
+                        </div>
+                        <Button 
+                          onClick={handleAddCustomStaff} 
+                          size="sm"
+                          data-testid="button-add-custom-staff"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Staff
+                        </Button>
+                      </div>
+
+                      {staffToAdd.length > 0 && (
+                        <div className="space-y-2">
+                          {staffToAdd.map((staff) => (
+                            <div key={staff.staff_id} className="flex items-center justify-between border rounded-lg p-2">
+                              <div className="flex items-center gap-3">
+                                <span className="font-medium text-sm">{staff.name}</span>
+                                <Badge variant="outline">{staff.gender}</Badge>
+                                {staff.custom_job_assignment && (
+                                  <Badge variant="secondary">
+                                    {getJobName(staff.custom_job_assignment)}
+                                  </Badge>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveCustomStaff(staff.staff_id)}
+                                data-testid={`button-remove-custom-staff-${staff.staff_id}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Config Summary */}
                     <div className="pt-4 border-t">
-                      <div className="flex gap-4 text-sm text-muted-foreground">
-                        <span>Hardcoded: {hardcodedAssignments.filter(a => a.staffIds.length > 0).length} jobs configured</span>
-                        <span>Custom: {customAssignments.filter(a => a.staffIds.length > 0).length} jobs configured</span>
+                      <div className="flex gap-4 flex-wrap text-sm text-muted-foreground">
+                        <span>Hardcoded: {hardcodedAssignments.filter(a => a.staffIds.length > 0).length} jobs</span>
+                        <span>Custom: {customAssignments.filter(a => a.staffIds.length > 0).length} jobs</span>
+                        <span>Excluded: {staffToRemove.length} staff</span>
+                        <span>Added: {staffToAdd.length} staff</span>
                       </div>
                     </div>
                   </CardContent>

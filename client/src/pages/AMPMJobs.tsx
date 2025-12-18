@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -80,6 +81,7 @@ export default function AMPMJobs() {
   const [outputTab, setOutputTab] = useState<string>("summary");
   const [configOpen, setConfigOpen] = useState(true);
   const [staffCounter, setStaffCounter] = useState(9900);
+  const [maxOverrides, setMaxOverrides] = useState<Record<number, boolean>>({});
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -149,6 +151,27 @@ export default function AMPMJobs() {
     return job ? `${job.job_name} (${job.job_code})` : `Job ${jobId}`;
   };
 
+  // Helper to get full job details by ID
+  const getJobDetails = (jobId: number): AMPMJob | undefined => {
+    return ampmJobs.find(j => j.job_id === jobId);
+  };
+
+  // Get staffing status for a job assignment
+  const getStaffingStatus = (jobId: number, currentCount: number) => {
+    const job = getJobDetails(jobId);
+    if (!job) return { status: 'ok' as const, normal: 0, max: 0 };
+    
+    const normal = job.normal_staff_assigned ?? 1;
+    const max = job.max_staff_assigned ?? normal + 1;
+    
+    if (currentCount > max) {
+      return { status: 'over-max' as const, normal, max };
+    } else if (currentCount > normal) {
+      return { status: 'over-normal' as const, normal, max };
+    }
+    return { status: 'ok' as const, normal, max };
+  };
+
   const formatSessionDisplay = (sessionId: number) => {
     if (sessionId === 1012) return "Session 1 - 2025";
     if (sessionId === 1015) return "Session 2 - 2025";
@@ -177,6 +200,23 @@ export default function AMPMJobs() {
   // Add staff to a hardcoded assignment
   const handleAddStaffToHardcoded = (jobId: number, staffId: string) => {
     const id = parseInt(staffId);
+    const assignment = hardcodedAssignments.find(a => a.jobId === jobId);
+    if (!assignment) return;
+    
+    const job = getJobDetails(jobId);
+    const max = job?.max_staff_assigned ?? 999;
+    const newCount = assignment.staffIds.length + 1;
+    
+    // Check if exceeding max without override
+    if (newCount > max && !maxOverrides[jobId]) {
+      toast({
+        title: "Maximum Exceeded",
+        description: `This job has a maximum of ${max} staff. Enable override to add more.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setHardcodedAssignments(hardcodedAssignments.map(a => {
       if (a.jobId === jobId) {
         if (a.staffIds.includes(id)) return a;
@@ -555,41 +595,94 @@ export default function AMPMJobs() {
 
                       {hardcodedAssignments.length > 0 && (
                         <div className="space-y-3">
-                          {hardcodedAssignments.map((assignment) => (
-                            <div key={assignment.jobId} className="border rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleRemoveHardcodedAssignment(assignment.jobId)}
-                                  data-testid={`button-remove-hardcoded-${assignment.jobId}`}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <div className="flex gap-2 flex-wrap">
-                                {assignment.staffIds.map((staffId) => (
-                                  <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                                    {getStaffName(staffId)}
-                                    <button
-                                      onClick={() => handleRemoveStaffFromHardcoded(assignment.jobId, staffId)}
-                                      className="ml-1 hover:text-destructive"
-                                      data-testid={`button-remove-hardcoded-staff-${assignment.jobId}-${staffId}`}
+                          {hardcodedAssignments.map((assignment) => {
+                            const staffingStatus = getStaffingStatus(assignment.jobId, assignment.staffIds.length);
+                            const job = getJobDetails(assignment.jobId);
+                            const isAtMax = assignment.staffIds.length >= (job?.max_staff_assigned ?? 999);
+                            
+                            return (
+                              <div 
+                                key={assignment.jobId} 
+                                className={`border rounded-lg p-3 space-y-2 ${
+                                  staffingStatus.status === 'over-max' ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 
+                                  staffingStatus.status === 'over-normal' ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : ''
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
+                                    <Badge 
+                                      variant={
+                                        staffingStatus.status === 'over-max' ? 'destructive' : 
+                                        staffingStatus.status === 'over-normal' ? 'outline' : 'secondary'
+                                      }
+                                      className={staffingStatus.status === 'over-normal' ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : ''}
                                     >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </Badge>
-                                ))}
+                                      {assignment.staffIds.length}/{staffingStatus.normal} staff
+                                    </Badge>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleRemoveHardcodedAssignment(assignment.jobId)}
+                                    data-testid={`button-remove-hardcoded-${assignment.jobId}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                
+                                {staffingStatus.status === 'over-normal' && (
+                                  <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                                    <span>Over normal staffing level ({staffingStatus.normal}). Max allowed: {staffingStatus.max}</span>
+                                  </div>
+                                )}
+                                
+                                {staffingStatus.status === 'over-max' && (
+                                  <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                                    <span>Exceeding maximum allowed ({staffingStatus.max})</span>
+                                  </div>
+                                )}
+                                
+                                <div className="flex gap-2 flex-wrap">
+                                  {assignment.staffIds.map((staffId) => (
+                                    <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
+                                      {getStaffName(staffId)}
+                                      <button
+                                        onClick={() => handleRemoveStaffFromHardcoded(assignment.jobId, staffId)}
+                                        className="ml-1 hover:text-destructive"
+                                        data-testid={`button-remove-hardcoded-staff-${assignment.jobId}-${staffId}`}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                                
+                                {isAtMax && !maxOverrides[assignment.jobId] ? (
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <Checkbox
+                                      id={`override-${assignment.jobId}`}
+                                      checked={maxOverrides[assignment.jobId] || false}
+                                      onCheckedChange={(checked) => 
+                                        setMaxOverrides(prev => ({ ...prev, [assignment.jobId]: checked === true }))
+                                      }
+                                      data-testid={`checkbox-override-${assignment.jobId}`}
+                                    />
+                                    <Label htmlFor={`override-${assignment.jobId}`} className="text-xs text-muted-foreground cursor-pointer">
+                                      Override maximum limit ({staffingStatus.max} staff)
+                                    </Label>
+                                  </div>
+                                ) : (
+                                  <Combobox
+                                    options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
+                                    placeholder="Add staff..."
+                                    onValueChange={(value: string) => handleAddStaffToHardcoded(assignment.jobId, value)}
+                                    testId={`combobox-add-hardcoded-staff-${assignment.jobId}`}
+                                  />
+                                )}
                               </div>
-                              <Combobox
-                                options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
-                                placeholder="Add staff..."
-                                onValueChange={(value: string) => handleAddStaffToHardcoded(assignment.jobId, value)}
-                                testId={`combobox-add-hardcoded-staff-${assignment.jobId}`}
-                              />
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>

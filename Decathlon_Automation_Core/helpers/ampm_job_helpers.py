@@ -780,13 +780,34 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name):
     sheet_name : str
         Name of the sheet tab
     """
-    # Load credentials
-    base_dir = Path(__file__).resolve().parents[1]
-    creds_file = base_dir / "config" / "credentials.json"
+    # Try environment variables first (Replit), then fall back to credentials.json (local)
+    service_account_info = None
     
-    with open(creds_file, 'r') as f:
-        creds_data = json.load(f)
-        service_account_info = creds_data['google_service_account']
+    # Check for environment variables
+    private_key = os.environ.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY')
+    if private_key:
+        # Build service account info from environment variables
+        service_account_info = {
+            "type": "service_account",
+            "project_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_PROJECT_ID', ''),
+            "private_key_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID', ''),
+            "private_key": private_key.replace('\\n', '\n'),  # Handle escaped newlines
+            "client_email": os.environ.get('GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL', ''),
+            "client_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_CLIENT_ID', ''),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+        }
+        print("Using Google credentials from environment variables")
+    else:
+        # Fall back to credentials.json for local development
+        base_dir = Path(__file__).resolve().parents[1]
+        creds_file = base_dir / "config" / "credentials.json"
+        
+        with open(creds_file, 'r') as f:
+            creds_data = json.load(f)
+            service_account_info = creds_data['google_service_account']
+        print("Using Google credentials from credentials.json")
     
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
     creds = Credentials.from_service_account_info(

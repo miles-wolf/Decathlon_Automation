@@ -64,5 +64,5 @@ def run_ampmjob_pipeline(session_id: int):
 # =============================================================================
 
 if __name__ == "__main__":
-    SESSION_ID = 1012  # Default session for direct execution
+    SESSION_ID = 1015  # Default session for direct execution
     run_ampmjob_pipeline(session_id=SESSION_ID)

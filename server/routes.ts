@@ -1098,6 +1098,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get hardcoded job IDs from config file for a session
+  app.get("/api/config/ampm-jobs/hardcoded/:sessionId", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const configPath = path.join(
+        process.cwd(),
+        "Decathlon_Automation_Core",
+        "config",
+        "ampmjob_inputs",
+        `session_${sessionId}`,
+        "ampmjob_inputs.json"
+      );
+
+      const fs = await import("fs/promises");
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Extract the job IDs from hardcoded_job_assignments keys
+      const hardcodedJobIds = Object.keys(config.hardcoded_job_assignments || {}).map(
+        (id) => parseInt(id)
+      );
+
+      res.json({ hardcodedJobIds });
+    } catch (error: any) {
+      console.error("Error reading config file:", error);
+      // Return empty array if config doesn't exist yet
+      if (error.code === "ENOENT") {
+        res.json({ hardcodedJobIds: [] });
+      } else {
+        res.status(500).json({ error: error.message || "Failed to read config" });
+      }
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

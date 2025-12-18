@@ -99,6 +99,17 @@ export default function AMPMJobs() {
     queryKey: ["/api/external-db/ampm-jobs"],
   });
 
+  // Fetch hardcoded job IDs from config for the selected session
+  const { data: hardcodedJobConfig } = useQuery<{ hardcodedJobIds: number[] }>({
+    queryKey: ["/api/config/ampm-jobs/hardcoded", selectedSessionId],
+    enabled: !!selectedSessionId,
+  });
+
+  // Get the list of hardcoded job IDs from config
+  const hardcodedJobIds = useMemo(() => {
+    return hardcodedJobConfig?.hardcodedJobIds || [];
+  }, [hardcodedJobConfig]);
+
   // Staff options for combobox
   const staffOptions = useMemo(() => {
     return eligibleStaff.map((s) => ({
@@ -107,13 +118,24 @@ export default function AMPMJobs() {
     }));
   }, [eligibleStaff]);
 
-  // Job options for combobox
+  // Job options for combobox (all jobs - for custom assignments)
   const jobOptions = useMemo(() => {
     return ampmJobs.map((j) => ({
       value: j.job_id.toString(),
       label: `${j.job_name} (${j.job_code})`,
     }));
   }, [ampmJobs]);
+
+  // Hardcoded job options - only jobs that are in the config's hardcoded list
+  const hardcodedJobOptions = useMemo(() => {
+    if (hardcodedJobIds.length === 0) return [];
+    return ampmJobs
+      .filter((j) => hardcodedJobIds.includes(j.job_id))
+      .map((j) => ({
+        value: j.job_id.toString(),
+        label: `${j.job_name} (${j.job_code})`,
+      }));
+  }, [ampmJobs, hardcodedJobIds]);
 
   // Helper to get staff name by ID
   const getStaffName = (staffId: number) => {
@@ -515,7 +537,7 @@ export default function AMPMJobs() {
                         <div>
                           <h3 className="text-sm font-medium">Hardcoded Job Assignments</h3>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Assign specific staff to specific jobs. These assignments are processed first.
+                            Assign staff to predefined jobs from the config ({hardcodedJobIds.length} jobs available).
                           </p>
                         </div>
                       </div>
@@ -523,7 +545,7 @@ export default function AMPMJobs() {
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
                           <Combobox
-                            options={jobOptions.filter(j => !hardcodedAssignments.some(a => a.jobId.toString() === j.value))}
+                            options={hardcodedJobOptions.filter(j => !hardcodedAssignments.some(a => a.jobId.toString() === j.value))}
                             placeholder="Select a job to add..."
                             onValueChange={handleAddHardcodedAssignment}
                             testId="combobox-add-hardcoded-job"
@@ -578,7 +600,7 @@ export default function AMPMJobs() {
                         <div>
                           <h3 className="text-sm font-medium">Custom Job Assignments</h3>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Additional staff assignments processed after hardcoded assignments.
+                            Assign staff to any additional jobs beyond the predefined list.
                           </p>
                         </div>
                       </div>

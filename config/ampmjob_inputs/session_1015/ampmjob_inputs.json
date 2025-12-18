@@ -12,5 +12,18 @@
   },
   "custom_job_assignments": {
       "1109": [1073]
+    },
+  "staff_to_remove": [
+    1115,
+    1123
+  ],
+  "staff_to_add": [
+    {
+      "staff_id": 9901,
+      "name": "Alex Johnson",
+      "gender": "M",
+      "custom_job_assignment": 1113
     }
+  ]
+    
 }

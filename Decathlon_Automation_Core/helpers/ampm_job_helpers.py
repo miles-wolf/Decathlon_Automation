@@ -786,12 +786,18 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name):
     # Check for environment variables
     private_key = os.environ.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY')
     if private_key:
+        # Clean up private key - handle various formats
+        # Strip surrounding quotes if present
+        private_key = private_key.strip('"').strip("'")
+        # Replace escaped newlines with real newlines
+        private_key = private_key.replace('\\n', '\n')
+        
         # Build service account info from environment variables
         service_account_info = {
             "type": "service_account",
             "project_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_PROJECT_ID', ''),
             "private_key_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID', ''),
-            "private_key": private_key.replace('\\n', '\n'),  # Handle escaped newlines
+            "private_key": private_key,
             "client_email": os.environ.get('GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL', ''),
             "client_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_CLIENT_ID', ''),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",

@@ -1,29 +1,5 @@
-{ 
+{
   "session_id": 1015,
-  "hardcoded_job_assignments":{
-    "1101": [1135, 1081],
-    "1105": [1043],
-    "1189": [1117, 1105],
-    "1113": [1145],
-    "1117": [1057],
-    "1173": [1095],
-    "1177": [1121],
-    "1181": [1061]
-  },
-  "custom_job_assignments": {
-      "1109": [1073]
-    },
-  "staff_to_remove": [
-    1115,
-    1123
-  ],
-  "staff_to_add": [
-    {
-      "staff_id": 9901,
-      "name": "Alex Johnson",
-      "gender": "M",
-      "custom_job_assignment": 1113
-    }
-  ]
-    
+  "hardcoded_job_assignments": {},
+  "custom_job_assignments": {}
 }

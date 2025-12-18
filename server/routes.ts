@@ -534,7 +534,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/execute/ampm-jobs", async (req, res) => {
     try {
-      const { sessionId, hardcodedJobAssignments, customJobAssignments } = req.body;
+      const { 
+        sessionId, 
+        hardcodedJobAssignments, 
+        customJobAssignments,
+        staffToRemove,
+        staffToAdd
+      } = req.body;
 
       if (!sessionId) {
         return res.status(400).json({ error: "Session ID is required" });
@@ -564,11 +570,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fs.mkdirSync(sessionDir, { recursive: true });
       }
       
-      // Write the input config JSON file
+      // Write the input config JSON file with all UI selections
       const configData = {
         session_id: sessionId,
         hardcoded_job_assignments: hardcodedJobAssignments || {},
-        custom_job_assignments: customJobAssignments || {}
+        custom_job_assignments: customJobAssignments || {},
+        staff_to_remove: staffToRemove || [],
+        staff_to_add: staffToAdd || []
       };
       
       const configPath = pathModule.join(sessionDir, "ampmjob_inputs.json");
@@ -1098,38 +1106,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get hardcoded job IDs from config file for a session
-  app.get("/api/config/ampm-jobs/hardcoded/:sessionId", async (req, res) => {
-    try {
-      const sessionId = req.params.sessionId;
-      const configPath = path.join(
-        process.cwd(),
-        "Decathlon_Automation_Core",
-        "config",
-        "ampmjob_inputs",
-        `session_${sessionId}`,
-        "ampmjob_inputs.json"
-      );
-
-      const fs = await import("fs/promises");
-      const configContent = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(configContent);
-
-      // Extract the job IDs from hardcoded_job_assignments keys
-      const hardcodedJobIds = Object.keys(config.hardcoded_job_assignments || {}).map(
-        (id) => parseInt(id)
-      );
-
-      res.json({ hardcodedJobIds });
-    } catch (error: any) {
-      console.error("Error reading config file:", error);
-      // Return empty array if config doesn't exist yet
-      if (error.code === "ENOENT") {
-        res.json({ hardcodedJobIds: [] });
-      } else {
-        res.status(500).json({ error: error.message || "Failed to read config" });
-      }
-    }
+  // Get hardcoded job IDs - constant list for all sessions
+  // These are the predefined jobs that can have hardcoded staff assignments
+  app.get("/api/config/ampm-jobs/hardcoded/:sessionId", async (_req, res) => {
+    // Constant list of hardcoded job IDs (same for all sessions)
+    const hardcodedJobIds = [1101, 1105, 1113, 1117, 1173, 1177, 1181, 1189];
+    res.json({ hardcodedJobIds });
   });
 
   const httpServer = createServer(app);

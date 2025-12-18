@@ -114,6 +114,8 @@ def load_ampm_job_config(directory: str, filename: str) -> dict:
         - session_id
         - hardcoded_job_assignments (dict mapping job_id to list of staff_ids)
         - custom_job_assignments (dict mapping job_id to list of staff_ids)
+        - staff_to_remove (list of staff_ids to exclude)
+        - staff_to_add (list of dicts with staff details)
     """
     # Resolve the path to the config directory
     base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
@@ -618,9 +620,13 @@ def build_ampm_job_assignments(conn, cur, session_id, directory=None, filename=N
     config = load_ampm_job_config(directory=directory, filename=filename)
     hardcoded_assignments = config.get('hardcoded_job_assignments', {})
     custom_assignments = config.get('custom_job_assignments', {})
+    staff_to_remove = config.get('staff_to_remove', [])
+    staff_to_add = config.get('staff_to_add', [])
     
     print(f"Loaded {len(hardcoded_assignments)} hardcoded job assignments")
     print(f"Loaded {len(custom_assignments)} custom job assignments")
+    print(f"Loaded {len(staff_to_remove)} staff to remove")
+    print(f"Loaded {len(staff_to_add)} staff to add")
     
     # Load jobs
     print("\n" + "-"*80)
@@ -637,6 +643,60 @@ def build_ampm_job_assignments(conn, cur, session_id, directory=None, filename=N
     eligible_staff_sql = get_eligible_staff_sql(cur, session_id=session_id)
     df_staff = pd.read_sql(eligible_staff_sql, conn)
     print(f"Found {len(df_staff)} eligible staff")
+    
+    # Process staff_to_remove
+    if staff_to_remove:
+        print("\n" + "-"*80)
+        print("Processing staff to remove...")
+        print("-"*80)
+        initial_count = len(df_staff)
+        df_staff = df_staff[~df_staff['staff_id'].isin(staff_to_remove)]
+        removed_count = initial_count - len(df_staff)
+        print(f"Removed {removed_count} staff from eligible list")
+        for staff_id in staff_to_remove:
+            print(f"  - Removed staff ID: {staff_id}")
+    
+    # Process staff_to_add
+    if staff_to_add:
+        print("\n" + "-"*80)
+        print("Processing staff to add...")
+        print("-"*80)
+        for staff_entry in staff_to_add:
+            # Skip empty entries
+            if not staff_entry or not staff_entry.get('staff_id'):
+                continue
+            
+            staff_id = staff_entry['staff_id']
+            name = staff_entry.get('name', f'Staff {staff_id}')
+            gender = staff_entry.get('gender', 'M')
+            custom_job = staff_entry.get('custom_job_assignment')
+            
+            # Create new staff entry
+            new_staff = pd.DataFrame([{
+                'staff_id': staff_id,
+                'staff_name': name,
+                'session_id': session_id,
+                'role_id': 1005,  # Default to JC
+                'group_id': None,
+                'field_lining_pref': staff_entry.get('field_lining_pref', ''),
+                'years_at_camp': staff_entry.get('years_at_camp', 0),
+                'gender': gender,
+                'physical_strength': staff_entry.get('physical_strength', 5),
+                'extroverted_level': staff_entry.get('extroverted_level', 5)
+            }])
+            
+            df_staff = pd.concat([df_staff, new_staff], ignore_index=True)
+            
+            print(f"  + Added staff: {name} (ID: {staff_id})")
+            
+            # If custom_job_assignment is provided, add to custom_assignments
+            if custom_job:
+                if custom_job not in custom_assignments:
+                    custom_assignments[custom_job] = []
+                custom_assignments[custom_job].append(staff_id)
+                print(f"    → Assigned to custom job ID: {custom_job}")
+        
+        print(f"Total eligible staff after additions: {len(df_staff)}")
     
     # Assign staff to jobs with hardcoded and custom assignments
     df_assignments = assign_staff_to_ampm_jobs(

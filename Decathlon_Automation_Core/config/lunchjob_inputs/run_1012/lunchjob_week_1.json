@@ -1,0 +1,29 @@
+{
+  "session_id": 1012,
+  "pattern_based_jobs": {},
+  "staff_game_days": [],
+  "tie_dye_days": [],
+  "tie_dye_staff": [],
+  "staff_to_remove": [
+    1173
+  ],
+  "staff_to_add": [],
+  "custom_job_assignments": {
+    "all_days": {
+      "1001": [
+        1001,
+        1091
+      ],
+      "1009": [
+        1029,
+        1107
+      ],
+      "1077": [
+        1047
+      ]
+    },
+    "specific_days": []
+  },
+  "debug": false,
+  "verbose": false
+}

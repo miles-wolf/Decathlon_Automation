@@ -1,5 +1,23 @@
 {
   "session_id": 1015,
-  "hardcoded_job_assignments": {},
-  "custom_job_assignments": {}
+  "hardcoded_job_assignments": {
+    "1173": [
+      1145
+    ],
+    "1189": [
+      1087
+    ]
+  },
+  "custom_job_assignments": {},
+  "staff_to_remove": [
+    1049
+  ],
+  "staff_to_add": [
+    {
+      "staff_id": 9900,
+      "name": "Miles Wolf",
+      "gender": "M",
+      "custom_job_assignment": null
+    }
+  ]
 }

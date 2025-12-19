@@ -2086,7 +2086,7 @@ export default function LunchtimeJobs() {
                         <div className="border rounded-lg p-4">
                           <h4 className="font-medium mb-3">Staffing Variations</h4>
                           <p className="text-xs text-muted-foreground mb-3">
-                            Days where staffing differs from the target
+                            Days where staffing differs from the target number for a job or staff from a particular group aren't split correctly
                           </p>
                           {(() => {
                             // Build variations comparing each week/day to target (not average)

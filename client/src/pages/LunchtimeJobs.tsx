@@ -133,6 +133,9 @@ export default function LunchtimeJobs() {
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
+  const [hardcodedOpen, setHardcodedOpen] = useState(true);
+  const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
+  const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(true);
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -1132,13 +1135,30 @@ export default function LunchtimeJobs() {
                       </p>
                     </div>
 
-                    {/* Hardcoded Assignments Section */}
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Hardcoded Job Assignments</h3>
-                      <p className="text-sm text-muted-foreground">
-                        These staff members will be assigned to their jobs for all days of all weeks
-                      </p>
-
+                    {/* Hardcoded Assignments Section - Collapsible */}
+                    <Collapsible open={hardcodedOpen} onOpenChange={setHardcodedOpen}>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="w-full justify-between p-4 border rounded-lg h-auto hover-elevate" data-testid="toggle-session-hardcoded">
+                          <div className="flex items-center gap-2">
+                            <Settings className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-left">
+                              <span className="font-medium">Hardcoded Job Assignments</span>
+                              <p className="text-xs text-muted-foreground font-normal">
+                                Staff assigned to specific jobs for all days of all weeks
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {(sessionDefaults.artsAndCraftsStaff.length + sessionDefaults.cardTradingStaff.length + sessionDefaults.customJobAssignments.allDays.length) > 0 && (
+                              <Badge variant="secondary">
+                                {sessionDefaults.artsAndCraftsStaff.length + sessionDefaults.cardTradingStaff.length + sessionDefaults.customJobAssignments.allDays.length} assigned
+                              </Badge>
+                            )}
+                            <ChevronDown className={`h-4 w-4 transition-transform ${hardcodedOpen ? 'rotate-180' : ''}`} />
+                          </div>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
                       {/* Arts & Crafts */}
                       <div className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -1266,7 +1286,8 @@ export default function LunchtimeJobs() {
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CollapsibleContent>
+                    </Collapsible>
 
                     {/* Collapsible Advanced Options */}
                     <div className="space-y-4 pt-4 border-t">
@@ -1425,85 +1446,133 @@ export default function LunchtimeJobs() {
                   </TabsList>
 
                   {weekConfigs.map((config) => (
-                    <TabsContent key={config.weekNumber} value={`week-${config.weekNumber}`} className="space-y-6">
-                      {/* Staff Game Days */}
-                      <div className="space-y-2">
-                        <Label>Staff Game Days</Label>
-                        <p className="text-xs text-muted-foreground">Select days when staff games are scheduled</p>
-                        <div className="flex gap-2 flex-wrap">
-                          {DAYS.map((day) => (
-                            <Button
-                              key={day}
-                              variant={config.staffGameDays.includes(day) ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleToggleGameDay(day)}
-                              className="capitalize"
-                              data-testid={`button-gameday-${day}`}
-                            >
-                              {day}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Tie Dye Days */}
-                      <div className="space-y-2">
-                        <Label>Tie Dye Days</Label>
-                        <p className="text-xs text-muted-foreground">Select days when tie dye activities are scheduled</p>
-                        <div className="flex gap-2 flex-wrap">
-                          {DAYS.map((day) => (
-                            <Button
-                              key={day}
-                              variant={config.tieDyeDays.includes(day) ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleToggleTieDyeDay(day)}
-                              className="capitalize"
-                              data-testid={`button-tiedye-${day}`}
-                            >
-                              {day}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Tie Dye Staff */}
-                      {config.tieDyeDays.length > 0 && (
-                        <div className="space-y-2">
-                          <Label>Tie Dye Staff</Label>
-                          <p className="text-xs text-muted-foreground">Staff assigned to tie dye on selected days</p>
-                          <div className="flex gap-2">
-                            <Combobox
-                              options={filteredStaffOptions}
-                              value=""
-                              onValueChange={handleAddTieDyeStaff}
-                              placeholder="Add staff..."
-                              searchPlaceholder="Search staff..."
-                              emptyText="No staff found."
-                              className="flex-1"
-                              testId="select-tiedye-staff"
-                            />
-                          </div>
-                          {config.tieDyeStaff.length > 0 && (
-                            <div className="flex gap-2 flex-wrap mt-2">
-                              {config.tieDyeStaff.map((staffId) => (
-                                <Badge key={staffId} variant="secondary" className="gap-1">
-                                  {getStaffName(staffId)}
-                                  <button onClick={() => handleRemoveTieDyeStaff(staffId)}>
-                                    <X className="h-3 w-3" />
-                                  </button>
+                    <TabsContent key={config.weekNumber} value={`week-${config.weekNumber}`} className="space-y-4">
+                      {/* Week Schedule Section - Collapsible */}
+                      <Collapsible open={weekScheduleOpen} onOpenChange={setWeekScheduleOpen}>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between p-4 border rounded-lg h-auto hover-elevate" data-testid={`toggle-week-${config.weekNumber}-schedule`}>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-left">
+                                <span className="font-medium">Week Schedule</span>
+                                <p className="text-xs text-muted-foreground font-normal">
+                                  Staff games and tie dye days
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {(config.staffGameDays.length + config.tieDyeDays.length) > 0 && (
+                                <Badge variant="secondary">
+                                  {config.staffGameDays.length + config.tieDyeDays.length} days
                                 </Badge>
+                              )}
+                              <ChevronDown className={`h-4 w-4 transition-transform ${weekScheduleOpen ? 'rotate-180' : ''}`} />
+                            </div>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
+                          {/* Staff Game Days */}
+                          <div className="space-y-2">
+                            <Label>Staff Game Days</Label>
+                            <p className="text-xs text-muted-foreground">Select days when staff games are scheduled</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {DAYS.map((day) => (
+                                <Button
+                                  key={day}
+                                  variant={config.staffGameDays.includes(day) ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleToggleGameDay(day)}
+                                  className="capitalize"
+                                  data-testid={`button-gameday-${day}`}
+                                >
+                                  {day}
+                                </Button>
                               ))}
                             </div>
-                          )}
-                        </div>
-                      )}
+                          </div>
 
-                      {/* Hardcoded Assignments Section */}
-                      <div className="space-y-4 border rounded-lg p-4">
-                        <h4 className="font-medium">Hardcoded Job Assignments</h4>
-                        <p className="text-xs text-muted-foreground">
-                          Staff assigned here will be given these jobs for all days this week.
-                        </p>
+                          {/* Tie Dye Days */}
+                          <div className="space-y-2">
+                            <Label>Tie Dye Days</Label>
+                            <p className="text-xs text-muted-foreground">Select days when tie dye activities are scheduled</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {DAYS.map((day) => (
+                                <Button
+                                  key={day}
+                                  variant={config.tieDyeDays.includes(day) ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleToggleTieDyeDay(day)}
+                                  className="capitalize"
+                                  data-testid={`button-tiedye-${day}`}
+                                >
+                                  {day}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Tie Dye Staff */}
+                          {config.tieDyeDays.length > 0 && (
+                            <div className="space-y-2">
+                              <Label>Tie Dye Staff</Label>
+                              <p className="text-xs text-muted-foreground">Staff assigned to tie dye on selected days</p>
+                              <div className="flex gap-2">
+                                <Combobox
+                                  options={filteredStaffOptions}
+                                  value=""
+                                  onValueChange={handleAddTieDyeStaff}
+                                  placeholder="Add staff..."
+                                  searchPlaceholder="Search staff..."
+                                  emptyText="No staff found."
+                                  className="flex-1"
+                                  testId="select-tiedye-staff"
+                                />
+                              </div>
+                              {config.tieDyeStaff.length > 0 && (
+                                <div className="flex gap-2 flex-wrap mt-2">
+                                  {config.tieDyeStaff.map((staffId) => (
+                                    <Badge key={staffId} variant="secondary" className="gap-1">
+                                      {getStaffName(staffId)}
+                                      <button onClick={() => handleRemoveTieDyeStaff(staffId)}>
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CollapsibleContent>
+                      </Collapsible>
+
+                      {/* Hardcoded Assignments Section - Collapsible */}
+                      <Collapsible open={weekHardcodedOpen} onOpenChange={setWeekHardcodedOpen}>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between p-4 border rounded-lg h-auto hover-elevate" data-testid={`toggle-week-${config.weekNumber}-hardcoded`}>
+                            <div className="flex items-center gap-2">
+                              <Settings className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-left">
+                                <span className="font-medium">Hardcoded Job Assignments</span>
+                                <p className="text-xs text-muted-foreground font-normal">
+                                  Staff assigned to specific jobs for all days this week
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {((config.artsAndCraftsStaff.length > 0 ? config.artsAndCraftsStaff.length : sessionDefaults.artsAndCraftsStaff.length) + 
+                                (config.cardTradingStaff.length > 0 ? config.cardTradingStaff.length : sessionDefaults.cardTradingStaff.length) + 
+                                config.customJobAssignments.allDays.length) > 0 && (
+                                <Badge variant="secondary">
+                                  {(config.artsAndCraftsStaff.length > 0 ? config.artsAndCraftsStaff.length : sessionDefaults.artsAndCraftsStaff.length) + 
+                                   (config.cardTradingStaff.length > 0 ? config.cardTradingStaff.length : sessionDefaults.cardTradingStaff.length) + 
+                                   config.customJobAssignments.allDays.length} assigned
+                                </Badge>
+                              )}
+                              <ChevronDown className={`h-4 w-4 transition-transform ${weekHardcodedOpen ? 'rotate-180' : ''}`} />
+                            </div>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
 
                         {/* Arts & Crafts */}
                         <div className="border rounded-lg p-3 space-y-2">
@@ -1667,7 +1736,8 @@ export default function LunchtimeJobs() {
                             </div>
                           )}
                         </div>
-                      </div>
+                        </CollapsibleContent>
+                      </Collapsible>
 
                       {/* Collapsible Advanced Options */}
                       <div className="space-y-3 pt-4 border-t">

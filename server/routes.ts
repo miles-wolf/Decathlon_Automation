@@ -439,7 +439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Write each week's config to a separate JSON file
-      if (weekConfigs && Array.isArray(weekConfigs)) {
+      if (weekConfigs && Array.isArray(weekConfigs) && weekConfigs.length > 0) {
         console.log(`Writing ${weekConfigs.length} week config(s) to ${runDir}...`);
         
         for (let i = 0; i < weekConfigs.length; i++) {
@@ -449,7 +449,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`  Written: lunchjob_week_${weekNum}.json`);
         }
       } else {
-        console.log("No weekConfigs provided, pipeline will use existing files");
+        // Default to week 1 config if no weekConfigs provided
+        console.log("No weekConfigs provided, creating default week 1 config");
+        const defaultConfig = {
+          staff_game_days: [],
+          tie_dye_days: [],
+          tie_dye_staff: [],
+          pattern_based_jobs: [],
+          staff_to_remove: [],
+          staff_to_add: [],
+          arts_and_crafts_staff: [],
+          card_trading_staff: [],
+          custom_job_assignments: { all_days: [], specific_days: [] },
+          debug: false,
+          verbose: false
+        };
+        const configPath = pathModule.join(runDir, `lunchjob_week_1.json`);
+        fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+        console.log(`  Written default: lunchjob_week_1.json`);
       }
 
       // Prepare environment variables for the Python script

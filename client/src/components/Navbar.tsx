@@ -8,12 +8,10 @@ export function Navbar() {
   const [location] = useLocation();
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-[#8fd4e8] dark:bg-[#1a3a4a] backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b bg-[#7ecef4] dark:bg-[#1e4a5a] backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3 hover-elevate active-elevate-2 rounded-xl px-2 py-1 -ml-2" data-testid="link-home">
-          <div className="h-10 w-10 rounded-full bg-[#8fd4e8] dark:bg-[#1a3a4a] flex items-center justify-center overflow-hidden">
-            <img src={decathlonLogo} alt="Decathlon Sports Club" className="h-12 w-12 object-cover mix-blend-multiply dark:mix-blend-screen" />
-          </div>
+          <img src={decathlonLogo} alt="Decathlon Sports Club" className="h-10 w-10 rounded-full object-cover" />
           <div className="font-semibold tracking-tight">
             Decathlon Sports Camp Director Tools
           </div>

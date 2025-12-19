@@ -21,7 +21,7 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconS
         data-testid={`card-tool-${id}`}
       >
         <div className="flex items-center gap-3">
-          <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#6bcff6] dark:bg-[#4bb8e8]">
+          <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#47c8f5] dark:bg-[#47c8f5]">
             <Icon className={iconClassName} style={iconStyle} strokeWidth={1.5} />
           </div>
           <div className="flex-1">
@@ -43,7 +43,7 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconS
       data-testid={`card-tool-${id}`}
     >
       <div className="flex items-center gap-3">
-        <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#6bcff6] dark:bg-[#4bb8e8]">
+        <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#47c8f5] dark:bg-[#47c8f5]">
           <Icon className={iconClassName} style={iconStyle} strokeWidth={1.5} />
         </div>
         <div>

@@ -2062,99 +2062,107 @@ export default function LunchtimeJobs() {
                           </div>
                         </div>
 
-                        {/* Job-Day Breakdown with Average and Target */}
+                        {/* Job Target Overview */}
                         <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Staff per Job (Average per Day)</h4>
+                          <h4 className="font-medium mb-3">Target Staff per Job</h4>
                           <p className="text-xs text-muted-foreground mb-3">
-                            Shows average staff assigned per single day instance across all weeks
+                            Normal staff assigned per day for each job
                           </p>
-                          <div className="overflow-auto">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Job</TableHead>
-                                  <TableHead className="text-center">Target</TableHead>
-                                  <TableHead className="text-center">Avg</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {Object.entries(jobDayStats.byJob).sort((a, b) => a[0].localeCompare(b[0])).map(([jobName, stats]) => {
-                                  const isAboveTarget = stats.normalStaff !== null && stats.avgPerDay > stats.normalStaff + 0.5;
-                                  const isBelowTarget = stats.normalStaff !== null && stats.avgPerDay < stats.normalStaff - 0.5;
-                                  
-                                  return (
-                                    <TableRow key={jobName}>
-                                      <TableCell className="font-medium text-sm">{jobName}</TableCell>
-                                      <TableCell className="text-center">
-                                        <Badge variant="outline">
-                                          {stats.normalStaff !== null ? stats.normalStaff : '-'}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell className="text-center">
-                                        <Badge 
-                                          variant={isAboveTarget ? "outline" : isBelowTarget ? "outline" : "secondary"}
-                                          className={
-                                            isAboveTarget ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : 
-                                            isBelowTarget ? 'border-blue-500 text-blue-700 dark:text-blue-400' : ''
-                                          }
-                                        >
-                                          {stats.avgPerDay.toFixed(1)}
-                                        </Badge>
-                                      </TableCell>
-                                    </TableRow>
-                                  );
-                                })}
-                              </TableBody>
-                            </Table>
-                          </div>
-                          <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">0</Badge>
-                              Above target
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">0</Badge>
-                              Below target
-                            </span>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(jobDayStats.byJob)
+                              .sort((a, b) => a[0].localeCompare(b[0]))
+                              .map(([jobName, stats]) => (
+                                <div key={jobName} className="flex items-center gap-1 text-sm">
+                                  <span className="text-muted-foreground">{jobName}:</span>
+                                  <Badge variant="outline">
+                                    {stats.normalStaff !== null ? stats.normalStaff : '-'}
+                                  </Badge>
+                                </div>
+                              ))}
                           </div>
                         </div>
 
-                        {/* Deviations - Specific week/day instances that differ from average */}
+                        {/* Staffing Variations - Days that differ from target */}
                         <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Staffing Deviations</h4>
+                          <h4 className="font-medium mb-3">Staffing Variations</h4>
                           <p className="text-xs text-muted-foreground mb-3">
-                            Specific week/day combinations that differ from the job's average
+                            Days where staffing differs from the target
                           </p>
                           {(() => {
-                            const weekDayDeviations = jobDayStats.deviations?.filter(d => d.type === 'week_day_above' || d.type === 'week_day_below') || [];
-                            if (weekDayDeviations.length === 0) {
+                            // Build variations comparing each week/day to target (not average)
+                            const variations: Array<{
+                              jobName: string;
+                              week: number;
+                              day: string;
+                              count: number;
+                              target: number;
+                              type: 'above' | 'below';
+                            }> = [];
+                            
+                            for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
+                              if (stats.normalStaff === null) continue;
+                              
+                              for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
+                                const [weekStr, day] = weekDayKey.split('-');
+                                const week = parseInt(weekStr);
+                                
+                                if (count > stats.normalStaff) {
+                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'above' });
+                                } else if (count < stats.normalStaff) {
+                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'below' });
+                                }
+                              }
+                            }
+                            
+                            // Sort by week, then day, then job name
+                            variations.sort((a, b) => {
+                              if (a.week !== b.week) return a.week - b.week;
+                              const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
+                              if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
+                                return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+                              }
+                              return a.jobName.localeCompare(b.jobName);
+                            });
+                            
+                            if (variations.length === 0) {
                               return (
                                 <p className="text-sm text-muted-foreground italic">
-                                  No deviations found. All week/day combinations match the average staffing levels.
+                                  No variations found. All days match the target staffing levels.
                                 </p>
                               );
                             }
+                            
                             return (
-                              <div className="space-y-2 max-h-48 overflow-auto">
-                                {weekDayDeviations.map((deviation, idx) => (
+                              <div className="space-y-2 max-h-64 overflow-auto">
+                                {variations.map((v, idx) => (
                                   <div key={idx} className="flex items-center gap-2 text-sm">
                                     <Badge 
                                       variant="outline" 
-                                      className={deviation.type === 'week_day_above' 
+                                      className={v.type === 'above' 
                                         ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
                                         : 'border-blue-500 text-blue-700 dark:text-blue-400'}
                                     >
-                                      Week {deviation.week} {deviation.day?.charAt(0).toUpperCase()}{deviation.day?.slice(1, 3)}
+                                      Wk{v.week} {v.day.charAt(0).toUpperCase()}{v.day.slice(1, 3)}
                                     </Badge>
                                     <span className="text-muted-foreground">
-                                      {deviation.jobName}: <strong>{deviation.count}</strong> staff 
-                                      ({deviation.type === 'week_day_above' ? 'above' : 'below'} avg of {deviation.avg?.toFixed(1)})
+                                      {v.jobName}: <strong>{v.count}</strong> 
+                                      {v.type === 'above' ? ' ↑' : ' ↓'} (target: {v.target})
                                     </span>
                                   </div>
                                 ))}
                               </div>
                             );
                           })()}
+                          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
+                              Above target
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
+                              Below target
+                            </span>
+                          </div>
                         </div>
 
                         {/* Same-Group Warnings */}

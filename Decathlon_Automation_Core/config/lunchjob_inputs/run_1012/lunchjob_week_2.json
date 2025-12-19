@@ -10,7 +10,16 @@
   "staff_to_remove": [],
   "staff_to_add": [],
   "custom_job_assignments": {
-    "all_days": {},
+    "all_days": {
+      "1001": [
+        1087,
+        1171
+      ],
+      "1009": [
+        1029,
+        1071
+      ]
+    },
     "specific_days": []
   },
   "debug": false,

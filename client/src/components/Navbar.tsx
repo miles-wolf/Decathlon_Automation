@@ -1,6 +1,7 @@
 import { Sun, Moon, Menu } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { Link, useLocation } from "wouter";
+import decathlonLogo from "@assets/image_1766113212503.png";
 
 export function Navbar() {
   const { theme, toggleTheme } = useTheme();
@@ -10,7 +11,7 @@ export function Navbar() {
     <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3 hover-elevate active-elevate-2 rounded-xl px-2 py-1 -ml-2" data-testid="link-home">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 shadow-sm" />
+          <img src={decathlonLogo} alt="Decathlon Sports Club" className="h-10 w-10 rounded-full object-cover" />
           <div className="font-semibold tracking-tight">
             Decathlon Sports Camp Director Tools
           </div>

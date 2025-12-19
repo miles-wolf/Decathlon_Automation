@@ -199,23 +199,77 @@ export default function LunchtimeJobs() {
 
   // Compute job-day statistics for summary
   const jobDayStats = useMemo(() => {
-    if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [] };
+    if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [], deviations: [] };
     
-    // Group by job
-    const byJob: Record<string, { jobId: number; byDay: Record<string, number>; avgPerDay: number }> = {};
+    // Get number of weeks from results
+    const weeks = Array.from(new Set(assignmentResults.map(r => r.week || 1)));
+    const numWeeks = weeks.length;
+    
+    // Group by job, tracking per-week/day counts
+    type JobStats = {
+      jobId: number;
+      normalStaff: number | null;
+      byWeekDay: Record<string, number>; // "week-day" -> count
+      byDay: Record<string, number>; // day -> total count across weeks
+      avgPerDay: number; // average per single day instance (not combined)
+    };
+    const byJob: Record<string, JobStats> = {};
     
     for (const r of assignmentResults) {
       const jobKey = r.job_name;
       if (!byJob[jobKey]) {
-        byJob[jobKey] = { jobId: r.lunch_job_id, byDay: {}, avgPerDay: 0 };
+        const jobInfo = lunchJobs.find(j => j.job_id === r.lunch_job_id);
+        byJob[jobKey] = { 
+          jobId: r.lunch_job_id, 
+          normalStaff: jobInfo?.normal_staff_assigned ?? null,
+          byWeekDay: {}, 
+          byDay: {},
+          avgPerDay: 0 
+        };
       }
+      const weekDayKey = `${r.week || 1}-${r.day}`;
+      byJob[jobKey].byWeekDay[weekDayKey] = (byJob[jobKey].byWeekDay[weekDayKey] || 0) + 1;
       byJob[jobKey].byDay[r.day] = (byJob[jobKey].byDay[r.day] || 0) + 1;
     }
     
-    // Calculate averages
+    // Calculate average per single day instance (total / number of week-day occurrences)
     for (const job of Object.values(byJob)) {
-      const dayValues = Object.values(job.byDay);
-      job.avgPerDay = dayValues.length > 0 ? dayValues.reduce((a, b) => a + b, 0) / dayValues.length : 0;
+      const weekDayValues = Object.values(job.byWeekDay);
+      job.avgPerDay = weekDayValues.length > 0 ? weekDayValues.reduce((a, b) => a + b, 0) / weekDayValues.length : 0;
+    }
+    
+    // Collect deviations: any week/day above or below average, or avg vs normal_staff
+    type Deviation = {
+      jobName: string;
+      type: 'week_day_above' | 'week_day_below' | 'avg_above_target' | 'avg_below_target';
+      week?: number;
+      day?: string;
+      count?: number;
+      avg?: number;
+      target?: number;
+    };
+    const deviations: Deviation[] = [];
+    
+    for (const [jobName, stats] of Object.entries(byJob)) {
+      // Check each week/day against average
+      for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
+        const [weekStr, day] = weekDayKey.split('-');
+        const week = parseInt(weekStr);
+        if (count > stats.avgPerDay + 0.5) {
+          deviations.push({ jobName, type: 'week_day_above', week, day, count, avg: stats.avgPerDay });
+        } else if (count < stats.avgPerDay - 0.5 && count > 0) {
+          deviations.push({ jobName, type: 'week_day_below', week, day, count, avg: stats.avgPerDay });
+        }
+      }
+      
+      // Check average against normal_staff_assigned target
+      if (stats.normalStaff !== null) {
+        if (stats.avgPerDay > stats.normalStaff + 0.5) {
+          deviations.push({ jobName, type: 'avg_above_target', avg: stats.avgPerDay, target: stats.normalStaff });
+        } else if (stats.avgPerDay < stats.normalStaff - 0.5) {
+          deviations.push({ jobName, type: 'avg_below_target', avg: stats.avgPerDay, target: stats.normalStaff });
+        }
+      }
     }
     
     // Detect same-group working same day (except Staff Games)
@@ -252,7 +306,7 @@ export default function LunchtimeJobs() {
       }
     }
     
-    return { byJob, sameGroupWarnings };
+    return { byJob, sameGroupWarnings, deviations };
   }, [assignmentResults, eligibleStaff, lunchJobs]);
 
   function createDefaultWeekConfig(weekNumber: number): WeekConfig {
@@ -1989,68 +2043,92 @@ export default function LunchtimeJobs() {
                           </div>
                         </div>
 
-                        {/* Job-Day Breakdown with Average and Deviations */}
+                        {/* Job-Day Breakdown with Average and Target */}
                         <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Staff per Job per Day</h4>
+                          <h4 className="font-medium mb-3">Staff per Job (Average per Day)</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Shows average staff assigned per single day instance across all weeks
+                          </p>
                           <div className="overflow-auto">
                             <Table>
                               <TableHeader>
                                 <TableRow>
                                   <TableHead>Job</TableHead>
+                                  <TableHead className="text-center">Target</TableHead>
                                   <TableHead className="text-center">Avg</TableHead>
-                                  {DAYS.map(day => (
-                                    <TableHead key={day} className="capitalize text-center">{day.substring(0, 3)}</TableHead>
-                                  ))}
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {Object.entries(jobDayStats.byJob).sort((a, b) => a[0].localeCompare(b[0])).map(([jobName, stats]) => (
-                                  <TableRow key={jobName}>
-                                    <TableCell className="font-medium text-sm">{jobName}</TableCell>
-                                    <TableCell className="text-center">
-                                      <Badge variant="outline">{stats.avgPerDay.toFixed(1)}</Badge>
-                                    </TableCell>
-                                    {DAYS.map(day => {
-                                      const count = stats.byDay[day] || 0;
-                                      const isAboveAvg = count > stats.avgPerDay + 0.5;
-                                      const isBelowAvg = count < stats.avgPerDay - 0.5 && count > 0;
-                                      const isMissing = count === 0;
-                                      
-                                      return (
-                                        <TableCell key={day} className="text-center">
-                                          <Badge 
-                                            variant={isMissing ? "destructive" : isAboveAvg ? "outline" : isBelowAvg ? "outline" : "secondary"}
-                                            className={
-                                              isMissing ? '' :
-                                              isAboveAvg ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : 
-                                              isBelowAvg ? 'border-blue-500 text-blue-700 dark:text-blue-400' : ''
-                                            }
-                                          >
-                                            {count}
-                                          </Badge>
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                ))}
+                                {Object.entries(jobDayStats.byJob).sort((a, b) => a[0].localeCompare(b[0])).map(([jobName, stats]) => {
+                                  const isAboveTarget = stats.normalStaff !== null && stats.avgPerDay > stats.normalStaff + 0.5;
+                                  const isBelowTarget = stats.normalStaff !== null && stats.avgPerDay < stats.normalStaff - 0.5;
+                                  
+                                  return (
+                                    <TableRow key={jobName}>
+                                      <TableCell className="font-medium text-sm">{jobName}</TableCell>
+                                      <TableCell className="text-center">
+                                        <Badge variant="outline">
+                                          {stats.normalStaff !== null ? stats.normalStaff : '-'}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <Badge 
+                                          variant={isAboveTarget ? "outline" : isBelowTarget ? "outline" : "secondary"}
+                                          className={
+                                            isAboveTarget ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : 
+                                            isBelowTarget ? 'border-blue-500 text-blue-700 dark:text-blue-400' : ''
+                                          }
+                                        >
+                                          {stats.avgPerDay.toFixed(1)}
+                                        </Badge>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
                               </TableBody>
                             </Table>
                           </div>
                           <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">0</Badge>
-                              Above avg
+                              Above target
                             </span>
                             <span className="flex items-center gap-1">
                               <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">0</Badge>
-                              Below avg
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Badge variant="destructive" className="h-4 px-1">0</Badge>
-                              No staff
+                              Below target
                             </span>
                           </div>
                         </div>
+
+                        {/* Deviations - Specific week/day instances that differ from average */}
+                        {jobDayStats.deviations && jobDayStats.deviations.length > 0 && (
+                          <div className="border rounded-lg p-4">
+                            <h4 className="font-medium mb-3">Staffing Deviations</h4>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              Specific week/day combinations that differ from the job's average
+                            </p>
+                            <div className="space-y-2 max-h-48 overflow-auto">
+                              {jobDayStats.deviations
+                                .filter(d => d.type === 'week_day_above' || d.type === 'week_day_below')
+                                .map((deviation, idx) => (
+                                  <div key={idx} className="flex items-center gap-2 text-sm">
+                                    <Badge 
+                                      variant="outline" 
+                                      className={deviation.type === 'week_day_above' 
+                                        ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
+                                        : 'border-blue-500 text-blue-700 dark:text-blue-400'}
+                                    >
+                                      Week {deviation.week} {deviation.day?.charAt(0).toUpperCase()}{deviation.day?.slice(1, 3)}
+                                    </Badge>
+                                    <span className="text-muted-foreground">
+                                      {deviation.jobName}: <strong>{deviation.count}</strong> staff 
+                                      ({deviation.type === 'week_day_above' ? 'above' : 'below'} avg of {deviation.avg?.toFixed(1)})
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Same-Group Warnings */}
                         {jobDayStats.sameGroupWarnings.length > 0 && (

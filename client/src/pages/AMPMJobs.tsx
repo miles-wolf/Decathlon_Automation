@@ -124,13 +124,15 @@ export default function AMPMJobs() {
     }));
   }, [eligibleStaff]);
 
-  // Job options for combobox (all jobs - for custom assignments)
+  // Job options for combobox (all jobs except hardcoded - for additional assignments)
   const jobOptions = useMemo(() => {
-    return ampmJobs.map((j) => ({
-      value: j.job_id.toString(),
-      label: `${j.job_name} (${j.job_code})`,
-    }));
-  }, [ampmJobs]);
+    return ampmJobs
+      .filter((j) => !hardcodedJobIds.includes(j.job_id))
+      .map((j) => ({
+        value: j.job_id.toString(),
+        label: `${j.job_name} (${j.job_code})`,
+      }));
+  }, [ampmJobs, hardcodedJobIds]);
 
   // Hardcoded job options - only jobs that are in the config's hardcoded list
   const hardcodedJobOptions = useMemo(() => {
@@ -174,6 +176,37 @@ export default function AMPMJobs() {
       return { status: 'over-normal' as const, normal, max };
     }
     return { status: 'ok' as const, normal, max };
+  };
+
+  // Get all assigned staff IDs across all assignments (including custom staff with job assignments)
+  const allAssignedStaffIds = useMemo(() => {
+    const hardcodedStaff = hardcodedAssignments.flatMap(a => a.staffIds);
+    const additionalStaff = customAssignments.flatMap(a => a.staffIds);
+    // Also include custom staff who have job assignments
+    const customStaffWithJobs = staffToAdd
+      .filter(s => s.custom_job_assignment)
+      .map(s => s.staff_id);
+    return [...hardcodedStaff, ...additionalStaff, ...customStaffWithJobs];
+  }, [hardcodedAssignments, customAssignments, staffToAdd]);
+
+  // Check if a staff member has conflicts (double assignment or assigned + removed)
+  const getStaffConflict = (staffId: number): { hasConflict: boolean; reason: string } => {
+    // Count how many times this staff is assigned
+    const assignmentCount = allAssignedStaffIds.filter(id => id === staffId).length;
+    
+    // Check if staff is both assigned and in remove list
+    const isInRemoveList = staffToRemove.includes(staffId);
+    const isAssigned = assignmentCount > 0;
+    
+    if (isAssigned && isInRemoveList) {
+      return { hasConflict: true, reason: 'Assigned and excluded' };
+    }
+    
+    if (assignmentCount > 1) {
+      return { hasConflict: true, reason: 'Double assignment' };
+    }
+    
+    return { hasConflict: false, reason: '' };
   };
 
   const formatSessionDisplay = (sessionId: number) => {
@@ -661,18 +694,26 @@ export default function AMPMJobs() {
                                 )}
                                 
                                 <div className="flex gap-2 flex-wrap">
-                                  {assignment.staffIds.map((staffId) => (
-                                    <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                                      {getStaffName(staffId)}
-                                      <button
-                                        onClick={() => handleRemoveStaffFromHardcoded(assignment.jobId, staffId)}
-                                        className="ml-1 hover:text-destructive"
-                                        data-testid={`button-remove-hardcoded-staff-${assignment.jobId}-${staffId}`}
+                                  {assignment.staffIds.map((staffId) => {
+                                    const conflict = getStaffConflict(staffId);
+                                    return (
+                                      <Badge 
+                                        key={staffId} 
+                                        variant={conflict.hasConflict ? "destructive" : "secondary"} 
+                                        className="flex items-center gap-1"
+                                        title={conflict.hasConflict ? conflict.reason : undefined}
                                       >
-                                        <X className="h-3 w-3" />
-                                      </button>
-                                    </Badge>
-                                  ))}
+                                        {getStaffName(staffId)}
+                                        <button
+                                          onClick={() => handleRemoveStaffFromHardcoded(assignment.jobId, staffId)}
+                                          className="ml-1 hover:text-destructive-foreground"
+                                          data-testid={`button-remove-hardcoded-staff-${assignment.jobId}-${staffId}`}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </Badge>
+                                    );
+                                  })}
                                 </div>
                                 
                                 {isAtMax && !maxOverrides[assignment.jobId] ? (
@@ -795,18 +836,26 @@ export default function AMPMJobs() {
                                 )}
                                 
                                 <div className="flex gap-2 flex-wrap">
-                                  {assignment.staffIds.map((staffId) => (
-                                    <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                                      {getStaffName(staffId)}
-                                      <button
-                                        onClick={() => handleRemoveStaffFromCustom(assignment.jobId, staffId)}
-                                        className="ml-1 hover:text-destructive"
-                                        data-testid={`button-remove-custom-staff-${assignment.jobId}-${staffId}`}
+                                  {assignment.staffIds.map((staffId) => {
+                                    const conflict = getStaffConflict(staffId);
+                                    return (
+                                      <Badge 
+                                        key={staffId} 
+                                        variant={conflict.hasConflict ? "destructive" : "secondary"} 
+                                        className="flex items-center gap-1"
+                                        title={conflict.hasConflict ? conflict.reason : undefined}
                                       >
-                                        <X className="h-3 w-3" />
-                                      </button>
-                                    </Badge>
-                                  ))}
+                                        {getStaffName(staffId)}
+                                        <button
+                                          onClick={() => handleRemoveStaffFromCustom(assignment.jobId, staffId)}
+                                          className="ml-1 hover:text-destructive-foreground"
+                                          data-testid={`button-remove-custom-staff-${assignment.jobId}-${staffId}`}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </Badge>
+                                    );
+                                  })}
                                 </div>
                                 
                                 {isAtMax && !customMaxOverrides[assignment.jobId] ? (
@@ -880,18 +929,26 @@ export default function AMPMJobs() {
 
                       {staffToRemove.length > 0 && (
                         <div className="flex gap-2 flex-wrap">
-                          {staffToRemove.map((staffId) => (
-                            <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                              {getStaffName(staffId)}
-                              <button
-                                onClick={() => handleRemoveFromRemoveList(staffId)}
-                                className="ml-1 hover:text-destructive"
-                                data-testid={`button-unexclude-staff-${staffId}`}
+                          {staffToRemove.map((staffId) => {
+                            const conflict = getStaffConflict(staffId);
+                            return (
+                              <Badge 
+                                key={staffId} 
+                                variant={conflict.hasConflict ? "destructive" : "secondary"} 
+                                className="flex items-center gap-1"
+                                title={conflict.hasConflict ? conflict.reason : undefined}
                               >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </Badge>
-                          ))}
+                                {getStaffName(staffId)}
+                                <button
+                                  onClick={() => handleRemoveFromRemoveList(staffId)}
+                                  className="ml-1 hover:text-destructive-foreground"
+                                  data-testid={`button-unexclude-staff-${staffId}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
                         </div>
                       )}
                     </CardContent>

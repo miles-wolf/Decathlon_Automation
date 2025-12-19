@@ -201,13 +201,11 @@ export default function LunchtimeJobs() {
   const jobDayStats = useMemo(() => {
     if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [], deviations: [], staffGameDays: [] };
     
-    // Get Staff Games job ID to exclude from summary
-    const staffGamesJobId = lunchJobs.find(j => j.job_code === "SG")?.job_id;
-    
     // Get Staff Game days per week (to exclude from same-group warnings)
+    // Use job_code directly from assignment results (more reliable than looking up from lunchJobs)
     const staffGameDays: Array<{ week: number; day: string }> = [];
     for (const r of assignmentResults) {
-      if (r.lunch_job_id === staffGamesJobId) {
+      if (r.job_code === "SG") {
         const week = r.week || 1;
         if (!staffGameDays.some(sg => sg.week === week && sg.day === r.day)) {
           staffGameDays.push({ week, day: r.day });
@@ -230,8 +228,8 @@ export default function LunchtimeJobs() {
     const byJob: Record<string, JobStats> = {};
     
     for (const r of assignmentResults) {
-      // Exclude Staff Games from the summary table
-      if (r.lunch_job_id === staffGamesJobId) continue;
+      // Exclude Staff Games from the summary table using job_code
+      if (r.job_code === "SG") continue;
       
       const jobKey = r.job_name;
       if (!byJob[jobKey]) {
@@ -299,7 +297,7 @@ export default function LunchtimeJobs() {
         
         // Get all staff working this week/day, excluding Staff Games job
         const dayResults = assignmentResults.filter(r => 
-          (r.week || 1) === week && r.day === day && r.lunch_job_id !== staffGamesJobId
+          (r.week || 1) === week && r.day === day && r.job_code !== "SG"
         );
         
         // Group by group_id

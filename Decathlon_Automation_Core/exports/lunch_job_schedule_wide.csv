@@ -1,55 +1,55 @@
-staff_name,Monday 1,Tuesday 1,Wednesday 1,Thursday 1,Monday 2,Tuesday 2,Wednesday 2,Thursday 2
-COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,
-Avi Sanchez,HS,,CA,,SO,,SG,
-Cassie Hickinbotham,PP,,GAGA 2,,CA,,SG,
-Charlie Premo,WA,,MULTI,,CT,,SG,
-Ellie Westagate,GAGA 1,,GAGA 1,,A&C,,SG,
-Jack Bucich,A&C,,WB,,WA,,SG,
-Jackson Dewberry,PG,,PP,,GR1,,SG,
-Matt Segal,PG,,WA,,MULTI,,SG,
-Olivia Bocchieri,CA,,SO,,CA,,SG,
-Ori Gillai,CT,,GR1,,BR,,SG,
-Parker McCabe,WB,,HS,,HS,,SG,
-,,,,,,,,
-COUNSELORS: TUESDAY/THURSDAY,,,,,,,,
-Anna Kolpakova,,CT,,SO,,HS,SG,CA
-Emily Jacquemin,,HS,,MULTI,,BR,SG,SO
-Eytan Goldhaber-Fiebert,,MULTI,,CA,,CA,SG,WB
-Guy Robbins,,WA,,WA,,GAGA 2,SG,HS
-Khalil Qureshi,,MULTI,,SO,,WA,SG,HS
-Liam Gerber,,GAGA 2,,GAGA 2,,RR,SG,BR
-Paige Leban,,CA,,PG,,WB,SG,SO
-Ryan Spence,,GR1,,GR1,,CA,SG,RR
-Tommy Sah,,CA,,HS,,GR1,SG,PG
-Trey Calhoun,,PP,,CT,,MULTI,SG,WA
-,,,,,,,,
-,,,,,,,,
-JUNIOR COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,
-Aditi Rairkar,RR,,HS,,WB,,SG,
-Amiya Garg,GAGA 2,,A&C,,CA,,SG,
-Aylin Orens,CA,,PG,,PG,,SG,
-Carlos Acosta,BR,,MULTI,,RR,,SG,
-Carter Leban,HS,,WB,,PG,,SG,
-Eli Sobel,SO,,FR/VB,,WB,,SG,
-Ethelle Bouvin,MULTI,,BR,,FR/VB,,SG,
-Ilan Gerber,CA,,SO,,HS,,SG,
-Jenna Bergendahl,GR1,,CT,,GAGA 1,,SG,
-Nishka Gollamudi,SO,,PG,,SO,,SG,
-Spencer Toland,FR/VB,,CA,,PP,,SG,
-Tamara Rubinsky,WB,,RR,,GAGA 2,,SG,
-Yardenne Sternheim,MULTI,,CA,,MULTI,,SG,
-,,,,,,,,
-JUNIOR COUNSELORS: TUESDAY/THURSDAY,,,,,,,,
-Abraham Paley,,SO,,PP,,HS,SG,PG
-Andrew Onodera,,HS,,HS,,WB,SG,CT
-Asher Darling,,RR,,GAGA 1,,GAGA 1,SG,MULTI
-Einav Garten,,SO,,PG,,PP,SG,CA
-Elise Darling,,GAGA 1,,CA,,PG,SG,CA
-Ellie Katsav,,CA,,WB,,FR/VB,SG,GR1
-Jonah Altschuler,,WB,,WB,,MULTI,SG,GAGA 2
-Lilley Stryker,,A&C,,CA,,CT,SG,PP
-Lizzy Moravick,,FR/VB,,BR,,SO,SG,A&C
-Micaela Rubinsky,,PG,,A&C,,PG,SG,GAGA 1
-Sabrina Neal,,PG,,MULTI,,A&C,SG,MULTI
-Sahil Qureshi,,WB,,RR,,SO,SG,WB
-Wes Calhoun,,BR,,FR/VB,,CA,SG,FR/VB
+staff_name,Monday 1,Tuesday 1,Wednesday 1,Thursday 1,Monday 2,Tuesday 2,Wednesday 2,Thursday 2,Monday 3,Tuesday 3,Wednesday 3,Thursday 3
+COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,,,,,
+Avi Sanchez,MULTI,,WB,,CA,,PG,,SO,,SG,
+Cassie Hickinbotham,CT,,CA,,SO,,SO,,PP,,SG,
+Charlie Premo,HS,,GR1,,CA,,BR,,GAGA 1,,SG,
+Ellie Westagate,MULTI,,CT,,SO,,WA,,WB,,SG,
+Jack Bucich,CA,,HS,,BR,,PP,,PG,,SG,
+Jackson Dewberry,PG,,RR,,FR/VB,,WB,,GAGA 2,,SG,
+Matt Segal,WA,,WA,,CA,,GAGA 1,,RR,,SG,
+Olivia Bocchieri,GAGA 1,,MULTI,,WA,,CT,,WB,,SG,
+Ori Gillai,GAGA 2,,PP,,WB,,HS,,WA,,SG,
+Parker McCabe,A&C,,PG,,GAGA 1,,A&C,,CA,,SG,
+,,,,,,,,,,,,
+COUNSELORS: TUESDAY/THURSDAY,,,,,,,,,,,,
+Anna Kolpakova,,HS,,PP,,HS,,PG,,HS,SG,GAGA 1
+Emily Jacquemin,,WA,,HS,,WA,,SO,,MULTI,SG,BR
+Eytan Goldhaber-Fiebert,,PG,,SO,,PG,,WB,,WB,SG,PP
+Guy Robbins,,GAGA 2,,WA,,CA,,WA,,WA,SG,PG
+Khalil Qureshi,,CA,,BR,,CT,,CA,,MULTI,SG,GR1
+Liam Gerber,,WB,,PG,,GR1,,A&C,,WB,SG,WB
+Paige Leban,,GAGA 1,,WB,,SO,,HS,,RR,SG,WA
+Ryan Spence,,PP,,GR1,,WB,,HS,,CA,SG,A&C
+Tommy Sah,,CA,,GAGA 1,,SO,,BR,,CT,SG,GAGA 2
+Trey Calhoun,,MULTI,,SO,,RR,,FR/VB,,SO,SG,CA
+,,,,,,,,,,,,
+,,,,,,,,,,,,
+JUNIOR COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,,,,,
+Aditi Rairkar,SO,,PG,,CT,,SO,,CA,,SG,
+Amiya Garg,SO,,GAGA 2,,GR1,,GAGA 2,,SO,,SG,
+Aylin Orens,HS,,CA,,GAGA 2,,WB,,PG,,SG,
+Carlos Acosta,WB,,BR,,A&C,,CA,,A&C,,SG,
+Carter Leban,PG,,GAGA 1,,MULTI,,MULTI,,MULTI,,SG,
+Eli Sobel,CA,,SO,,MULTI,,RR,,BR,,SG,
+Ethelle Bouvin,WB,,MULTI,,PG,,PG,,CA,,SG,
+Ilan Gerber,RR,,HS,,HS,,CA,,HS,,SG,
+Jenna Bergendahl,PP,,WB,,HS,,GR1,,GR1,,SG,
+Nishka Gollamudi,CA,,FR/VB,,RR,,FR/VB,,HS,,SG,
+Spencer Toland,GR1,,A&C,,PG,,HS,,CT,,SG,
+Tamara Rubinsky,FR/VB,,CA,,PP,,CA,,FR/VB,,SG,
+Yardenne Sternheim,BR,,SO,,WB,,MULTI,,MULTI,,SG,
+,,,,,,,,,,,,
+JUNIOR COUNSELORS: TUESDAY/THURSDAY,,,,,,,,,,,,
+Abraham Paley,,RR,,CA,,GAGA 1,,CA,,GAGA 1,SG,SO
+Andrew Onodera,,SO,,RR,,HS,,CA,,CA,SG,PG
+Asher Darling,,A&C,,CA,,PP,,MULTI,,PG,SG,WB
+Einav Garten,,SO,,A&C,,CA,,RR,,GAGA 2,SG,HS
+Elise Darling,,GR1,,HS,,A&C,,GAGA 2,,FR/VB,SG,CA
+Ellie Katsav,,WB,,MULTI,,CA,,PP,,PG,SG,RR
+Jonah Altschuler,,BR,,FR/VB,,BR,,GR1,,CA,SG,SO
+Lilley Stryker,,MULTI,,MULTI,,FR/VB,,WB,,GR1,SG,CA
+Lizzy Moravick,,CA,,WB,,GAGA 2,,GAGA 1,,HS,SG,CT
+Micaela Rubinsky,,CT,,PG,,MULTI,,CT,,BR,SG,FR/VB
+Sabrina Neal,,HS,,GAGA 2,,MULTI,,MULTI,,SO,SG,HS
+Sahil Qureshi,,FR/VB,,CA,,PG,,SO,,PP,SG,MULTI
+Wes Calhoun,,PG,,CT,,WB,,PG,,A&C,SG,MULTI

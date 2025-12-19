@@ -1305,7 +1305,7 @@ export default function LunchtimeJobs() {
                       {/* Custom Staff-to-Job Assignment */}
                       <div className="border rounded-lg p-4 space-y-3">
                         <div>
-                          <Label className="text-base">Custom Job Assignments</Label>
+                          <Label className="text-base">Additional Job Assignments</Label>
                           <p className="text-xs text-muted-foreground">Assign any staff to any job (applies on their scheduled work days)</p>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1753,10 +1753,10 @@ export default function LunchtimeJobs() {
                           )}
                         </div>
 
-                        {/* Custom Job Assignments */}
+                        {/* Additional Job Assignments */}
                         <div className="border rounded-lg p-3 space-y-2">
                           <div>
-                            <Label className="text-sm">Custom Job Assignments</Label>
+                            <Label className="text-sm">Additional Job Assignments</Label>
                             <p className="text-xs text-muted-foreground">Assign any staff to any job (applies on their scheduled work days)</p>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

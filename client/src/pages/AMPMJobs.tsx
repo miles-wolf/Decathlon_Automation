@@ -79,9 +79,13 @@ export default function AMPMJobs() {
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
-  const [configOpen, setConfigOpen] = useState(true);
+  const [hardcodedOpen, setHardcodedOpen] = useState(true);
+  const [additionalOpen, setAdditionalOpen] = useState(false);
+  const [excludeOpen, setExcludeOpen] = useState(false);
+  const [addStaffOpen, setAddStaffOpen] = useState(false);
   const [staffCounter, setStaffCounter] = useState(9900);
   const [maxOverrides, setMaxOverrides] = useState<Record<number, boolean>>({});
+  const [customMaxOverrides, setCustomMaxOverrides] = useState<Record<number, boolean>>({});
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -258,6 +262,23 @@ export default function AMPMJobs() {
   // Add staff to a custom assignment
   const handleAddStaffToCustom = (jobId: number, staffId: string) => {
     const id = parseInt(staffId);
+    const assignment = customAssignments.find(a => a.jobId === jobId);
+    if (!assignment) return;
+    
+    const job = getJobDetails(jobId);
+    const max = job?.max_staff_assigned ?? 999;
+    const newCount = assignment.staffIds.length + 1;
+    
+    // Check if exceeding max without override
+    if (newCount > max && !customMaxOverrides[jobId]) {
+      toast({
+        title: "Maximum Exceeded",
+        description: `This job has a maximum of ${max} staff. Enable override to add more.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setCustomAssignments(customAssignments.map(a => {
       if (a.jobId === jobId) {
         if (a.staffIds.includes(id)) return a;
@@ -551,37 +572,33 @@ export default function AMPMJobs() {
 
           {/* Configuration Section */}
           {selectedSessionId && (
-            <Card>
-              <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="cursor-pointer hover-elevate">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Settings className="h-5 w-5" />
-                        <div>
-                          <CardTitle>Job Assignment Configuration</CardTitle>
-                          <CardDescription className="mt-1">
-                            Configure hardcoded and custom job assignments for this session
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <ChevronDown className={`h-5 w-5 transition-transform ${configOpen ? 'rotate-180' : ''}`} />
-                    </div>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent className="space-y-6">
-                    {/* Hardcoded Assignments */}
-                    <div className="space-y-4">
+            <div className="space-y-4">
+              {/* Hardcoded Assignments */}
+              <Card>
+                <Collapsible open={hardcodedOpen} onOpenChange={setHardcodedOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-medium">Hardcoded Job Assignments</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Assign staff to predefined jobs from the config ({hardcodedJobIds.length} jobs available).
-                          </p>
+                        <div className="flex items-center gap-2">
+                          <Settings className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Hardcoded Job Assignments</CardTitle>
+                            <CardDescription className="text-xs">
+                              Assign staff to predefined jobs ({hardcodedJobIds.length} jobs available)
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hardcodedAssignments.filter(a => a.staffIds.length > 0).length > 0 && (
+                            <Badge variant="secondary">{hardcodedAssignments.filter(a => a.staffIds.length > 0).length} jobs</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${hardcodedOpen ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
                           <Combobox
@@ -685,19 +702,37 @@ export default function AMPMJobs() {
                           })}
                         </div>
                       )}
-                    </div>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
 
-                    {/* Custom Assignments */}
-                    <div className="space-y-4">
+              {/* Additional Job Assignments */}
+              <Card>
+                <Collapsible open={additionalOpen} onOpenChange={setAdditionalOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-medium">Custom Job Assignments</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Assign staff to any additional jobs beyond the predefined list.
-                          </p>
+                        <div className="flex items-center gap-2">
+                          <Plus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Additional Job Assignments</CardTitle>
+                            <CardDescription className="text-xs">
+                              Assign staff to any jobs beyond the predefined list
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {customAssignments.filter(a => a.staffIds.length > 0).length > 0 && (
+                            <Badge variant="secondary">{customAssignments.filter(a => a.staffIds.length > 0).length} jobs</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${additionalOpen ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
                           <Combobox
@@ -711,57 +746,127 @@ export default function AMPMJobs() {
 
                       {customAssignments.length > 0 && (
                         <div className="space-y-3">
-                          {customAssignments.map((assignment) => (
-                            <div key={assignment.jobId} className="border rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleRemoveCustomAssignment(assignment.jobId)}
-                                  data-testid={`button-remove-custom-${assignment.jobId}`}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <div className="flex gap-2 flex-wrap">
-                                {assignment.staffIds.map((staffId) => (
-                                  <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                                    {getStaffName(staffId)}
-                                    <button
-                                      onClick={() => handleRemoveStaffFromCustom(assignment.jobId, staffId)}
-                                      className="ml-1 hover:text-destructive"
-                                      data-testid={`button-remove-custom-staff-${assignment.jobId}-${staffId}`}
+                          {customAssignments.map((assignment) => {
+                            const staffingStatus = getStaffingStatus(assignment.jobId, assignment.staffIds.length);
+                            const job = getJobDetails(assignment.jobId);
+                            const isAtMax = assignment.staffIds.length >= (job?.max_staff_assigned ?? 999);
+                            
+                            return (
+                              <div 
+                                key={assignment.jobId} 
+                                className={`border rounded-lg p-3 space-y-2 ${
+                                  staffingStatus.status === 'over-max' ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 
+                                  staffingStatus.status === 'over-normal' ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : ''
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
+                                    <Badge 
+                                      variant={
+                                        staffingStatus.status === 'over-max' ? 'destructive' : 
+                                        staffingStatus.status === 'over-normal' ? 'outline' : 'secondary'
+                                      }
+                                      className={staffingStatus.status === 'over-normal' ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : ''}
                                     >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </Badge>
-                                ))}
+                                      {assignment.staffIds.length}/{staffingStatus.normal} staff
+                                    </Badge>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleRemoveCustomAssignment(assignment.jobId)}
+                                    data-testid={`button-remove-custom-${assignment.jobId}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                
+                                {staffingStatus.status === 'over-normal' && (
+                                  <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                                    <span>Over normal staffing level ({staffingStatus.normal}). Max allowed: {staffingStatus.max}</span>
+                                  </div>
+                                )}
+                                
+                                {staffingStatus.status === 'over-max' && (
+                                  <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                                    <span>Exceeding maximum allowed ({staffingStatus.max})</span>
+                                  </div>
+                                )}
+                                
+                                <div className="flex gap-2 flex-wrap">
+                                  {assignment.staffIds.map((staffId) => (
+                                    <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
+                                      {getStaffName(staffId)}
+                                      <button
+                                        onClick={() => handleRemoveStaffFromCustom(assignment.jobId, staffId)}
+                                        className="ml-1 hover:text-destructive"
+                                        data-testid={`button-remove-custom-staff-${assignment.jobId}-${staffId}`}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                                
+                                {isAtMax && !customMaxOverrides[assignment.jobId] ? (
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <Checkbox
+                                      id={`custom-override-${assignment.jobId}`}
+                                      checked={customMaxOverrides[assignment.jobId] || false}
+                                      onCheckedChange={(checked) => 
+                                        setCustomMaxOverrides(prev => ({ ...prev, [assignment.jobId]: checked === true }))
+                                      }
+                                      data-testid={`checkbox-custom-override-${assignment.jobId}`}
+                                    />
+                                    <Label htmlFor={`custom-override-${assignment.jobId}`} className="text-xs text-muted-foreground cursor-pointer">
+                                      Override maximum limit ({staffingStatus.max} staff)
+                                    </Label>
+                                  </div>
+                                ) : (
+                                  <Combobox
+                                    options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
+                                    placeholder="Add staff..."
+                                    onValueChange={(value: string) => handleAddStaffToCustom(assignment.jobId, value)}
+                                    testId={`combobox-add-custom-staff-${assignment.jobId}`}
+                                  />
+                                )}
                               </div>
-                              <Combobox
-                                options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
-                                placeholder="Add staff..."
-                                onValueChange={(value: string) => handleAddStaffToCustom(assignment.jobId, value)}
-                                testId={`combobox-add-custom-staff-${assignment.jobId}`}
-                              />
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
-                    </div>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
 
-                    {/* Staff to Remove */}
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <UserMinus className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <h3 className="text-sm font-medium">Staff to Exclude</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Exclude staff from this session's assignments
-                          </p>
+              {/* Staff to Exclude */}
+              <Card>
+                <Collapsible open={excludeOpen} onOpenChange={setExcludeOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <UserMinus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Staff to Exclude</CardTitle>
+                            <CardDescription className="text-xs">
+                              Exclude staff from this session's assignments
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {staffToRemove.length > 0 && (
+                            <Badge variant="secondary">{staffToRemove.length} excluded</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${excludeOpen ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
                           <Combobox
@@ -789,20 +894,37 @@ export default function AMPMJobs() {
                           ))}
                         </div>
                       )}
-                    </div>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
 
-                    {/* Custom Staff to Add */}
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <UserPlus className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <h3 className="text-sm font-medium">Add Custom Staff</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Add staff members not in the database with optional job assignment
-                          </p>
+              {/* Add Custom Staff */}
+              <Card>
+                <Collapsible open={addStaffOpen} onOpenChange={setAddStaffOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <UserPlus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Add Custom Staff</CardTitle>
+                            <CardDescription className="text-xs">
+                              Add staff members not in the database
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {staffToAdd.length > 0 && (
+                            <Badge variant="secondary">{staffToAdd.length} added</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${addStaffOpen ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
                       <div className="border rounded-lg p-3 space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div className="space-y-1">
@@ -876,21 +998,11 @@ export default function AMPMJobs() {
                           ))}
                         </div>
                       )}
-                    </div>
-
-                    {/* Config Summary */}
-                    <div className="pt-4 border-t">
-                      <div className="flex gap-4 flex-wrap text-sm text-muted-foreground">
-                        <span>Hardcoded: {hardcodedAssignments.filter(a => a.staffIds.length > 0).length} jobs</span>
-                        <span>Custom: {customAssignments.filter(a => a.staffIds.length > 0).length} jobs</span>
-                        <span>Excluded: {staffToRemove.length} staff</span>
-                        <span>Added: {staffToAdd.length} staff</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </CollapsibleContent>
-              </Collapsible>
-            </Card>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
+            </div>
           )}
 
           {/* Actions */}

@@ -1,14 +1,10 @@
 {
   "session_id": 1012,
   "hardcoded_job_assignments": {
-    "1173": [
-      1171,
-      1075,
+    "1113": [
       1029,
-      1097,
       1033,
-      1001,
-      1091
+      1075
     ]
   },
   "custom_job_assignments": {},

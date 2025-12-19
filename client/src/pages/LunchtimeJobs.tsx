@@ -199,13 +199,27 @@ export default function LunchtimeJobs() {
 
   // Compute job-day statistics for summary
   const jobDayStats = useMemo(() => {
-    if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [], deviations: [] };
+    if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [], deviations: [], staffGameDays: [] };
+    
+    // Get Staff Games job ID to exclude from summary
+    const staffGamesJobId = lunchJobs.find(j => j.job_code === "SG")?.job_id;
+    
+    // Get Staff Game days per week (to exclude from same-group warnings)
+    const staffGameDays: Array<{ week: number; day: string }> = [];
+    for (const r of assignmentResults) {
+      if (r.lunch_job_id === staffGamesJobId) {
+        const week = r.week || 1;
+        if (!staffGameDays.some(sg => sg.week === week && sg.day === r.day)) {
+          staffGameDays.push({ week, day: r.day });
+        }
+      }
+    }
     
     // Get number of weeks from results
     const weeks = Array.from(new Set(assignmentResults.map(r => r.week || 1)));
     const numWeeks = weeks.length;
     
-    // Group by job, tracking per-week/day counts
+    // Group by job, tracking per-week/day counts (exclude Staff Games from summary)
     type JobStats = {
       jobId: number;
       normalStaff: number | null;
@@ -216,6 +230,9 @@ export default function LunchtimeJobs() {
     const byJob: Record<string, JobStats> = {};
     
     for (const r of assignmentResults) {
+      // Exclude Staff Games from the summary table
+      if (r.lunch_job_id === staffGamesJobId) continue;
+      
       const jobKey = r.job_name;
       if (!byJob[jobKey]) {
         const jobInfo = lunchJobs.find(j => j.job_id === r.lunch_job_id);
@@ -272,41 +289,45 @@ export default function LunchtimeJobs() {
       }
     }
     
-    // Detect same-group working same day (except Staff Games)
-    const sameGroupWarnings: Array<{ day: string; groupId: number; staffNames: string[] }> = [];
-    const staffGamesJobId = lunchJobs.find(j => j.job_code === "SG")?.job_id;
+    // Detect same-group working same day (except Staff Games and Staff Game days)
+    const sameGroupWarnings: Array<{ week: number; day: string; groupId: number; staffNames: string[] }> = [];
     
-    for (const day of DAYS) {
-      // Get all staff working this day, excluding Staff Games
-      const dayResults = assignmentResults.filter(r => 
-        r.day === day && r.lunch_job_id !== staffGamesJobId
-      );
-      
-      // Group by group_id
-      const byGroup: Record<number, string[]> = {};
-      for (const r of dayResults) {
-        const groupId = getStaffGroup(r.staff_id);
-        if (groupId !== null) {
-          if (!byGroup[groupId]) byGroup[groupId] = [];
-          if (!byGroup[groupId].includes(r.staff_name)) {
-            byGroup[groupId].push(r.staff_name);
+    for (const week of weeks) {
+      for (const day of DAYS) {
+        // Skip Staff Game days entirely
+        if (staffGameDays.some(sg => sg.week === week && sg.day === day)) continue;
+        
+        // Get all staff working this week/day, excluding Staff Games job
+        const dayResults = assignmentResults.filter(r => 
+          (r.week || 1) === week && r.day === day && r.lunch_job_id !== staffGamesJobId
+        );
+        
+        // Group by group_id
+        const byGroup: Record<number, string[]> = {};
+        for (const r of dayResults) {
+          const groupId = getStaffGroup(r.staff_id);
+          if (groupId !== null) {
+            if (!byGroup[groupId]) byGroup[groupId] = [];
+            if (!byGroup[groupId].includes(r.staff_name)) {
+              byGroup[groupId].push(r.staff_name);
+            }
           }
         }
-      }
-      
-      // Find groups where all members are working the same day
-      for (const [groupIdStr, staffNames] of Object.entries(byGroup)) {
-        const groupId = parseInt(groupIdStr);
-        const totalGroupMembers = eligibleStaff.filter(s => s.group_id === groupId).length;
         
-        // If all group members (at least 2) are working the same day on non-Staff Games jobs
-        if (staffNames.length >= 2 && staffNames.length === totalGroupMembers) {
-          sameGroupWarnings.push({ day, groupId, staffNames });
+        // Find groups where all members are working the same day
+        for (const [groupIdStr, staffNames] of Object.entries(byGroup)) {
+          const groupId = parseInt(groupIdStr);
+          const totalGroupMembers = eligibleStaff.filter(s => s.group_id === groupId).length;
+          
+          // If all group members (at least 2) are working the same day on non-Staff Games jobs
+          if (staffNames.length >= 2 && staffNames.length === totalGroupMembers) {
+            sameGroupWarnings.push({ week, day, groupId, staffNames });
+          }
         }
       }
     }
     
-    return { byJob, sameGroupWarnings, deviations };
+    return { byJob, sameGroupWarnings, deviations, staffGameDays };
   }, [assignmentResults, eligibleStaff, lunchJobs]);
 
   function createDefaultWeekConfig(weekNumber: number): WeekConfig {
@@ -2101,16 +2122,23 @@ export default function LunchtimeJobs() {
                         </div>
 
                         {/* Deviations - Specific week/day instances that differ from average */}
-                        {jobDayStats.deviations && jobDayStats.deviations.length > 0 && (
-                          <div className="border rounded-lg p-4">
-                            <h4 className="font-medium mb-3">Staffing Deviations</h4>
-                            <p className="text-xs text-muted-foreground mb-3">
-                              Specific week/day combinations that differ from the job's average
-                            </p>
-                            <div className="space-y-2 max-h-48 overflow-auto">
-                              {jobDayStats.deviations
-                                .filter(d => d.type === 'week_day_above' || d.type === 'week_day_below')
-                                .map((deviation, idx) => (
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-3">Staffing Deviations</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Specific week/day combinations that differ from the job's average
+                          </p>
+                          {(() => {
+                            const weekDayDeviations = jobDayStats.deviations?.filter(d => d.type === 'week_day_above' || d.type === 'week_day_below') || [];
+                            if (weekDayDeviations.length === 0) {
+                              return (
+                                <p className="text-sm text-muted-foreground italic">
+                                  No deviations found. All week/day combinations match the average staffing levels.
+                                </p>
+                              );
+                            }
+                            return (
+                              <div className="space-y-2 max-h-48 overflow-auto">
+                                {weekDayDeviations.map((deviation, idx) => (
                                   <div key={idx} className="flex items-center gap-2 text-sm">
                                     <Badge 
                                       variant="outline" 
@@ -2126,9 +2154,10 @@ export default function LunchtimeJobs() {
                                     </span>
                                   </div>
                                 ))}
-                            </div>
-                          </div>
-                        )}
+                              </div>
+                            );
+                          })()}
+                        </div>
 
                         {/* Same-Group Warnings */}
                         {jobDayStats.sameGroupWarnings.length > 0 && (
@@ -2137,13 +2166,13 @@ export default function LunchtimeJobs() {
                               Same Group on Same Day Warning
                             </h4>
                             <p className="text-xs text-muted-foreground mb-3">
-                              All staff from these groups are working on the same day (excluding Staff Games):
+                              All staff from these groups are working on the same day (excluding Staff Game days):
                             </p>
                             <div className="space-y-2">
                               {jobDayStats.sameGroupWarnings.map((warning, idx) => (
                                 <div key={idx} className="flex items-center gap-2 text-sm">
                                   <Badge variant="outline" className="border-yellow-500">
-                                    {warning.day.charAt(0).toUpperCase() + warning.day.slice(1)}
+                                    Week {warning.week} {warning.day.charAt(0).toUpperCase() + warning.day.slice(1)}
                                   </Badge>
                                   <span className="text-yellow-700 dark:text-yellow-400">
                                     Group {warning.groupId}: {warning.staffNames.join(", ")}

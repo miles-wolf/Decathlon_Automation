@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus } from "lucide-react";
+import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,16 @@ import {
 import { LogViewer, useLogStream } from "@/components/LogViewer";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, BarChart3, ScrollText, FileText } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface EligibleStaff {
   staff_name: string;
@@ -86,6 +96,8 @@ export default function AMPMJobs() {
   const [staffCounter, setStaffCounter] = useState(9900);
   const [maxOverrides, setMaxOverrides] = useState<Record<number, boolean>>({});
   const [customMaxOverrides, setCustomMaxOverrides] = useState<Record<number, boolean>>({});
+  const [pendingExcludeStaff, setPendingExcludeStaff] = useState<number | null>(null);
+  const [showExcludeConfirm, setShowExcludeConfirm] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -334,9 +346,32 @@ export default function AMPMJobs() {
   // Staff to remove handlers
   const handleAddStaffToRemove = (staffId: string) => {
     const id = parseInt(staffId);
-    if (!staffToRemove.includes(id)) {
+    if (staffToRemove.includes(id)) return;
+    
+    // Check if this staff has any existing assignments
+    const hasAssignment = allAssignedStaffIds.includes(id);
+    
+    if (hasAssignment) {
+      // Show confirmation dialog
+      setPendingExcludeStaff(id);
+      setShowExcludeConfirm(true);
+    } else {
+      // No conflict, add directly
       setStaffToRemove([...staffToRemove, id]);
     }
+  };
+
+  const confirmExcludeStaff = () => {
+    if (pendingExcludeStaff !== null) {
+      setStaffToRemove([...staffToRemove, pendingExcludeStaff]);
+      setPendingExcludeStaff(null);
+      setShowExcludeConfirm(false);
+    }
+  };
+
+  const cancelExcludeStaff = () => {
+    setPendingExcludeStaff(null);
+    setShowExcludeConfirm(false);
   };
 
   const handleRemoveFromRemoveList = (staffId: number) => {
@@ -1136,15 +1171,35 @@ export default function AMPMJobs() {
                     {assignmentResults.length > 0 ? (
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {resultsByJob.map(([jobName, results]) => (
-                            <div key={jobName} className="border rounded-lg p-3">
-                              <div className="text-sm font-medium truncate" title={jobName}>
-                                {jobName}
+                          {resultsByJob.map(([jobName, results]) => {
+                            const jobId = results[0]?.job_id;
+                            const job = jobId ? getJobDetails(jobId) : null;
+                            const target = job?.normal_staff_assigned ?? null;
+                            const isOverTarget = target !== null && results.length > target;
+                            const isUnderTarget = target !== null && results.length < target;
+                            
+                            return (
+                              <div 
+                                key={jobName} 
+                                className={`border rounded-lg p-3 ${
+                                  isOverTarget ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : 
+                                  isUnderTarget ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' : ''
+                                }`}
+                              >
+                                <div className="text-sm font-medium truncate" title={jobName}>
+                                  {jobName}
+                                </div>
+                                <div className="text-2xl font-bold mt-1">{results.length}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  staff assigned {target !== null && (
+                                    <span className={isOverTarget ? 'text-yellow-600' : isUnderTarget ? 'text-blue-600' : ''}>
+                                      (target: {target})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-2xl font-bold mt-1">{results.length}</div>
-                              <div className="text-xs text-muted-foreground">staff assigned</div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         <div className="text-sm text-muted-foreground pt-2 border-t">
                           Total: {assignmentResults.length} assignments across {resultsByJob.length} jobs
@@ -1252,6 +1307,32 @@ export default function AMPMJobs() {
           )}
         </div>
       </div>
+
+      {/* Confirmation Dialog for Excluding Staff with Assignments */}
+      <AlertDialog open={showExcludeConfirm} onOpenChange={setShowExcludeConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Staff Has Existing Assignment
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingExcludeStaff && (
+                <>
+                  <strong>{getStaffName(pendingExcludeStaff)}</strong> is already assigned to a job. 
+                  Are you sure you want to exclude them? This will create a conflict that you'll need to resolve.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelExcludeStaff}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmExcludeStaff} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Exclude Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

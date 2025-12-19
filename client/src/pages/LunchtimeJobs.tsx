@@ -182,6 +182,76 @@ export default function LunchtimeJobs() {
     }));
   }, [eligibleStaff]);
 
+  // Helper to get job name by ID
+  const getJobNameById = (jobId: number) => {
+    const job = lunchJobs.find(j => j.job_id === jobId);
+    return job?.job_name || `Job ${jobId}`;
+  };
+
+  // Helper to get staff group by ID
+  const getStaffGroup = (staffId: number) => {
+    const staff = eligibleStaff.find(s => s.staff_id === staffId);
+    return staff?.group_id ?? null;
+  };
+
+  // Compute job-day statistics for summary
+  const jobDayStats = useMemo(() => {
+    if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [] };
+    
+    // Group by job
+    const byJob: Record<string, { jobId: number; byDay: Record<string, number>; avgPerDay: number }> = {};
+    
+    for (const r of assignmentResults) {
+      const jobKey = r.job_name;
+      if (!byJob[jobKey]) {
+        byJob[jobKey] = { jobId: r.lunch_job_id, byDay: {}, avgPerDay: 0 };
+      }
+      byJob[jobKey].byDay[r.day] = (byJob[jobKey].byDay[r.day] || 0) + 1;
+    }
+    
+    // Calculate averages
+    for (const job of Object.values(byJob)) {
+      const dayValues = Object.values(job.byDay);
+      job.avgPerDay = dayValues.length > 0 ? dayValues.reduce((a, b) => a + b, 0) / dayValues.length : 0;
+    }
+    
+    // Detect same-group working same day (except Staff Games)
+    const sameGroupWarnings: Array<{ day: string; groupId: number; staffNames: string[] }> = [];
+    const staffGamesJobId = lunchJobs.find(j => j.job_code === "SG")?.job_id;
+    
+    for (const day of DAYS) {
+      // Get all staff working this day, excluding Staff Games
+      const dayResults = assignmentResults.filter(r => 
+        r.day === day && r.lunch_job_id !== staffGamesJobId
+      );
+      
+      // Group by group_id
+      const byGroup: Record<number, string[]> = {};
+      for (const r of dayResults) {
+        const groupId = getStaffGroup(r.staff_id);
+        if (groupId !== null) {
+          if (!byGroup[groupId]) byGroup[groupId] = [];
+          if (!byGroup[groupId].includes(r.staff_name)) {
+            byGroup[groupId].push(r.staff_name);
+          }
+        }
+      }
+      
+      // Find groups where all members are working the same day
+      for (const [groupIdStr, staffNames] of Object.entries(byGroup)) {
+        const groupId = parseInt(groupIdStr);
+        const totalGroupMembers = eligibleStaff.filter(s => s.group_id === groupId).length;
+        
+        // If all group members (at least 2) are working the same day on non-Staff Games jobs
+        if (staffNames.length >= 2 && staffNames.length === totalGroupMembers) {
+          sameGroupWarnings.push({ day, groupId, staffNames });
+        }
+      }
+    }
+    
+    return { byJob, sameGroupWarnings };
+  }, [assignmentResults, eligibleStaff, lunchJobs]);
+
   function createDefaultWeekConfig(weekNumber: number): WeekConfig {
     return {
       weekNumber,
@@ -1848,6 +1918,93 @@ export default function LunchtimeJobs() {
                             })}
                           </div>
                         </div>
+
+                        {/* Job-Day Breakdown with Average and Deviations */}
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-3">Staff per Job per Day</h4>
+                          <div className="overflow-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Job</TableHead>
+                                  <TableHead className="text-center">Avg</TableHead>
+                                  {DAYS.map(day => (
+                                    <TableHead key={day} className="capitalize text-center">{day.substring(0, 3)}</TableHead>
+                                  ))}
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {Object.entries(jobDayStats.byJob).sort((a, b) => a[0].localeCompare(b[0])).map(([jobName, stats]) => (
+                                  <TableRow key={jobName}>
+                                    <TableCell className="font-medium text-sm">{jobName}</TableCell>
+                                    <TableCell className="text-center">
+                                      <Badge variant="outline">{stats.avgPerDay.toFixed(1)}</Badge>
+                                    </TableCell>
+                                    {DAYS.map(day => {
+                                      const count = stats.byDay[day] || 0;
+                                      const isAboveAvg = count > stats.avgPerDay + 0.5;
+                                      const isBelowAvg = count < stats.avgPerDay - 0.5 && count > 0;
+                                      const isMissing = count === 0;
+                                      
+                                      return (
+                                        <TableCell key={day} className="text-center">
+                                          <Badge 
+                                            variant={isMissing ? "destructive" : isAboveAvg ? "outline" : isBelowAvg ? "outline" : "secondary"}
+                                            className={
+                                              isMissing ? '' :
+                                              isAboveAvg ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : 
+                                              isBelowAvg ? 'border-blue-500 text-blue-700 dark:text-blue-400' : ''
+                                            }
+                                          >
+                                            {count}
+                                          </Badge>
+                                        </TableCell>
+                                      );
+                                    })}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                          <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">0</Badge>
+                              Above avg
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">0</Badge>
+                              Below avg
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Badge variant="destructive" className="h-4 px-1">0</Badge>
+                              No staff
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Same-Group Warnings */}
+                        {jobDayStats.sameGroupWarnings.length > 0 && (
+                          <div className="border border-yellow-500 rounded-lg p-4 bg-yellow-50 dark:bg-yellow-950/20">
+                            <h4 className="font-medium mb-2 text-yellow-700 dark:text-yellow-400">
+                              Same Group on Same Day Warning
+                            </h4>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              All staff from these groups are working on the same day (excluding Staff Games):
+                            </p>
+                            <div className="space-y-2">
+                              {jobDayStats.sameGroupWarnings.map((warning, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-sm">
+                                  <Badge variant="outline" className="border-yellow-500">
+                                    {warning.day.charAt(0).toUpperCase() + warning.day.slice(1)}
+                                  </Badge>
+                                  <span className="text-yellow-700 dark:text-yellow-400">
+                                    Group {warning.groupId}: {warning.staffNames.join(", ")}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="flex gap-2">
                           <Button

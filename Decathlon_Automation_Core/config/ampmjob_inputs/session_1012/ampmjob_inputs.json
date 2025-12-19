@@ -2,23 +2,13 @@
   "session_id": 1012,
   "hardcoded_job_assignments": {
     "1105": [
-      1029,
-      1107,
-      1115,
-      1125
+      1029
     ]
   },
-  "custom_job_assignments": {
-    "1105": [
-      1087,
-      1067,
-      1107
-    ]
-  },
+  "custom_job_assignments": {},
   "staff_to_remove": [
-    1087,
-    1107,
-    1079
+    1029,
+    1075
   ],
   "staff_to_add": []
 }

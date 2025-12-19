@@ -2,24 +2,12 @@
   "session_id": 1012,
   "pattern_based_jobs": {},
   "staff_game_days": [],
-  "tie_dye_days": [
-    "tuesday",
-    "wednesday"
-  ],
+  "tie_dye_days": [],
   "tie_dye_staff": [],
   "staff_to_remove": [],
   "staff_to_add": [],
   "custom_job_assignments": {
-    "all_days": {
-      "1001": [
-        1087,
-        1171
-      ],
-      "1009": [
-        1029,
-        1071
-      ]
-    },
+    "all_days": {},
     "specific_days": []
   },
   "debug": false,

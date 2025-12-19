@@ -9,6 +9,7 @@ const tools = [
     description:
       "Assign and balance lunch duties across staff with one click and quick edits.",
     icon: Briefcase,
+    iconSize: 24,
   },
   {
     id: "am-pm-jobs",
@@ -16,6 +17,7 @@ const tools = [
     description:
       "Assign before and after camp roles with one click and quick edits.",
     icon: Clock,
+    iconSize: 24,
   },
   {
     id: "upload-lists",
@@ -23,6 +25,7 @@ const tools = [
     description:
       "Upload documentation such as staff lists, lunchtime and ampm job lists and other specifications.",
     icon: Upload,
+    iconSize: 20,
     comingSoon: true,
   },
   {
@@ -31,6 +34,7 @@ const tools = [
     description:
       "Create the daily schedule for the entire session or for special Fridays.",
     icon: Calendar,
+    iconSize: 22,
     comingSoon: true,
   },
   {
@@ -39,6 +43,7 @@ const tools = [
     description:
       "Create fair teams and brackets for soccer, football, basketball tournaments and more.",
     icon: Trophy,
+    iconSize: 22,
     comingSoon: true,
   },
   {
@@ -47,6 +52,7 @@ const tools = [
     description:
       "Build and edit a digitized binder for staff to easily find whatever they're looking for at a moment's notice.",
     icon: BookOpen,
+    iconSize: 22,
     comingSoon: true,
   },
 ];

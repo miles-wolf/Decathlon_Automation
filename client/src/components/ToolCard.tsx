@@ -18,8 +18,8 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon }: Too
         data-testid={`card-tool-${id}`}
       >
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl grid place-content-center bg-muted">
-            <Icon className="h-5 w-5" />
+          <div className="h-10 w-10 rounded-xl grid place-content-center bg-sky-100 dark:bg-sky-900/40">
+            <Icon className="h-5 w-5 text-sky-600 dark:text-sky-400" />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -40,8 +40,8 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon }: Too
       data-testid={`card-tool-${id}`}
     >
       <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl grid place-content-center bg-muted">
-          <Icon className="h-5 w-5" />
+        <div className="h-10 w-10 rounded-xl grid place-content-center bg-sky-100 dark:bg-sky-900/40">
+          <Icon className="h-5 w-5 text-sky-600 dark:text-sky-400" />
         </div>
         <div>
           <h3 className="font-semibold tracking-tight">{title}</h3>

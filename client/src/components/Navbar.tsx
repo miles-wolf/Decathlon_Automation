@@ -8,7 +8,7 @@ export function Navbar() {
   const [location] = useLocation();
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-[#6bcff6] dark:bg-[#1e4a5a] backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b bg-[#6bcff6] dark:bg-[#4bb8e8] backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3 hover-elevate active-elevate-2 rounded-xl px-2 py-1 -ml-2" data-testid="link-home">
           <img src={decathlonLogo} alt="Decathlon Sports Club" className="h-10 w-10 rounded-full object-cover" />

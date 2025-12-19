@@ -2411,10 +2411,11 @@ def build_multi_week_schedule(conn, cur, session_id):
         all_debug_outputs['all_week_assignments'] = all_week_assignments
         return all_debug_outputs
     
-    # Normal mode: return both formats
+    # Normal mode: return both formats and raw assignments for UI
     return {
         'df_full_session': df_full_session,
-        'df_wide_format': df_wide_format
+        'df_wide_format': df_wide_format,
+        'all_week_assignments': all_week_assignments
     }
 
 

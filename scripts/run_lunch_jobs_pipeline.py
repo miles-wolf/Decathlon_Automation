@@ -33,27 +33,26 @@ def main():
         # Extract long-format assignments from all weeks for UI display
         all_assignments = []
         
-        # Check for week-specific data in debug output
-        week_num = 1
-        while f'week_{week_num}' in output:
-            week_data = output[f'week_{week_num}']
-            if isinstance(week_data, dict) and 'df_final_assignments_enriched' in week_data:
-                df = week_data['df_final_assignments_enriched'].copy()
-                df['week'] = week_num
-                all_assignments.append(df)
-            week_num += 1
-        
-        # If no week-specific data, try to use all_week_assignments
-        # all_week_assignments is a list of (schedule_df, enriched_df) tuples
-        if not all_assignments and 'all_week_assignments' in output:
-            for i, item in enumerate(output['all_week_assignments']):
+        # Use all_week_assignments which contains (week_num, df_assignments) tuples
+        if 'all_week_assignments' in output:
+            for item in output['all_week_assignments']:
                 if isinstance(item, tuple) and len(item) >= 2:
-                    # item[1] is df_final_assignments_enriched (the long-format assignments)
-                    df_enriched = item[1] if hasattr(item[1], 'columns') else None
-                    if df_enriched is not None:
-                        df_enriched = df_enriched.copy()
-                        df_enriched['week'] = i + 1
-                        all_assignments.append(df_enriched)
+                    week_num, df_assignments = item
+                    if hasattr(df_assignments, 'columns'):
+                        df = df_assignments.copy()
+                        df['week'] = week_num
+                        all_assignments.append(df)
+        
+        # Fallback: check for week-specific data in debug output
+        if not all_assignments:
+            week_num = 1
+            while f'week_{week_num}' in output:
+                week_data = output[f'week_{week_num}']
+                if isinstance(week_data, dict) and 'df_final_assignments_enriched' in week_data:
+                    df = week_data['df_final_assignments_enriched'].copy()
+                    df['week'] = week_num
+                    all_assignments.append(df)
+                week_num += 1
         
         if all_assignments:
             df_combined = pd.concat(all_assignments, ignore_index=True)

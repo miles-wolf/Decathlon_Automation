@@ -133,6 +133,9 @@ export default function LunchtimeJobs() {
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
+  const [hardcodedOpen, setHardcodedOpen] = useState(true);
+  const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
+  const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(true);
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -181,6 +184,149 @@ export default function LunchtimeJobs() {
       label: `Group ${g}`,
     }));
   }, [eligibleStaff]);
+
+  // Helper to get job name by ID
+  const getJobNameById = (jobId: number) => {
+    const job = lunchJobs.find(j => j.job_id === jobId);
+    return job?.job_name || `Job ${jobId}`;
+  };
+
+  // Helper to get staff group by ID
+  const getStaffGroup = (staffId: number) => {
+    const staff = eligibleStaff.find(s => s.staff_id === staffId);
+    return staff?.group_id ?? null;
+  };
+
+  // Compute job-day statistics for summary
+  const jobDayStats = useMemo(() => {
+    if (assignmentResults.length === 0) return { byJob: {}, sameGroupWarnings: [], deviations: [], staffGameDays: [] };
+    
+    // Get Staff Game days per week (to exclude from same-group warnings)
+    // Use job_code directly from assignment results (more reliable than looking up from lunchJobs)
+    const staffGameDays: Array<{ week: number; day: string }> = [];
+    for (const r of assignmentResults) {
+      if (r.job_code === "SG") {
+        const week = r.week || 1;
+        if (!staffGameDays.some(sg => sg.week === week && sg.day === r.day)) {
+          staffGameDays.push({ week, day: r.day });
+        }
+      }
+    }
+    
+    // Get number of weeks from results
+    const weeks = Array.from(new Set(assignmentResults.map(r => r.week || 1)));
+    const numWeeks = weeks.length;
+    
+    // Group by job, tracking per-week/day counts (exclude Staff Games from summary)
+    type JobStats = {
+      jobId: number;
+      normalStaff: number | null;
+      byWeekDay: Record<string, number>; // "week-day" -> count
+      byDay: Record<string, number>; // day -> total count across weeks
+      avgPerDay: number; // average per single day instance (not combined)
+    };
+    const byJob: Record<string, JobStats> = {};
+    
+    for (const r of assignmentResults) {
+      // Exclude Staff Games from the summary table using job_code
+      if (r.job_code === "SG") continue;
+      
+      const jobKey = r.job_name;
+      if (!byJob[jobKey]) {
+        const jobInfo = lunchJobs.find(j => j.job_id === r.lunch_job_id);
+        byJob[jobKey] = { 
+          jobId: r.lunch_job_id, 
+          normalStaff: jobInfo?.normal_staff_assigned ?? null,
+          byWeekDay: {}, 
+          byDay: {},
+          avgPerDay: 0 
+        };
+      }
+      const weekDayKey = `${r.week || 1}-${r.day}`;
+      byJob[jobKey].byWeekDay[weekDayKey] = (byJob[jobKey].byWeekDay[weekDayKey] || 0) + 1;
+      byJob[jobKey].byDay[r.day] = (byJob[jobKey].byDay[r.day] || 0) + 1;
+    }
+    
+    // Calculate average per single day instance (total / number of week-day occurrences)
+    for (const job of Object.values(byJob)) {
+      const weekDayValues = Object.values(job.byWeekDay);
+      job.avgPerDay = weekDayValues.length > 0 ? weekDayValues.reduce((a, b) => a + b, 0) / weekDayValues.length : 0;
+    }
+    
+    // Collect deviations: any week/day above or below average, or avg vs normal_staff
+    type Deviation = {
+      jobName: string;
+      type: 'week_day_above' | 'week_day_below' | 'avg_above_target' | 'avg_below_target';
+      week?: number;
+      day?: string;
+      count?: number;
+      avg?: number;
+      target?: number;
+    };
+    const deviations: Deviation[] = [];
+    
+    for (const [jobName, stats] of Object.entries(byJob)) {
+      // Check each week/day against average
+      for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
+        const [weekStr, day] = weekDayKey.split('-');
+        const week = parseInt(weekStr);
+        if (count > stats.avgPerDay + 0.5) {
+          deviations.push({ jobName, type: 'week_day_above', week, day, count, avg: stats.avgPerDay });
+        } else if (count < stats.avgPerDay - 0.5 && count > 0) {
+          deviations.push({ jobName, type: 'week_day_below', week, day, count, avg: stats.avgPerDay });
+        }
+      }
+      
+      // Check average against normal_staff_assigned target
+      if (stats.normalStaff !== null) {
+        if (stats.avgPerDay > stats.normalStaff + 0.5) {
+          deviations.push({ jobName, type: 'avg_above_target', avg: stats.avgPerDay, target: stats.normalStaff });
+        } else if (stats.avgPerDay < stats.normalStaff - 0.5) {
+          deviations.push({ jobName, type: 'avg_below_target', avg: stats.avgPerDay, target: stats.normalStaff });
+        }
+      }
+    }
+    
+    // Detect same-group working same day (except Staff Games and Staff Game days)
+    const sameGroupWarnings: Array<{ week: number; day: string; groupId: number; staffNames: string[] }> = [];
+    
+    for (const week of weeks) {
+      for (const day of DAYS) {
+        // Skip Staff Game days entirely
+        if (staffGameDays.some(sg => sg.week === week && sg.day === day)) continue;
+        
+        // Get all staff working this week/day, excluding Staff Games job
+        const dayResults = assignmentResults.filter(r => 
+          (r.week || 1) === week && r.day === day && r.job_code !== "SG"
+        );
+        
+        // Group by group_id
+        const byGroup: Record<number, string[]> = {};
+        for (const r of dayResults) {
+          const groupId = getStaffGroup(r.staff_id);
+          if (groupId !== null) {
+            if (!byGroup[groupId]) byGroup[groupId] = [];
+            if (!byGroup[groupId].includes(r.staff_name)) {
+              byGroup[groupId].push(r.staff_name);
+            }
+          }
+        }
+        
+        // Find groups where all members are working the same day
+        for (const [groupIdStr, staffNames] of Object.entries(byGroup)) {
+          const groupId = parseInt(groupIdStr);
+          const totalGroupMembers = eligibleStaff.filter(s => s.group_id === groupId).length;
+          
+          // If all group members (at least 2) are working the same day on non-Staff Games jobs
+          if (staffNames.length >= 2 && staffNames.length === totalGroupMembers) {
+            sameGroupWarnings.push({ week, day, groupId, staffNames });
+          }
+        }
+      }
+    }
+    
+    return { byJob, sameGroupWarnings, deviations, staffGameDays };
+  }, [assignmentResults, eligibleStaff, lunchJobs]);
 
   function createDefaultWeekConfig(weekNumber: number): WeekConfig {
     return {
@@ -1062,13 +1208,30 @@ export default function LunchtimeJobs() {
                       </p>
                     </div>
 
-                    {/* Hardcoded Assignments Section */}
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Hardcoded Job Assignments</h3>
-                      <p className="text-sm text-muted-foreground">
-                        These staff members will be assigned to their jobs for all days of all weeks
-                      </p>
-
+                    {/* Hardcoded Assignments Section - Collapsible */}
+                    <Collapsible open={hardcodedOpen} onOpenChange={setHardcodedOpen}>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="w-full justify-between p-4 border rounded-lg h-auto hover-elevate" data-testid="toggle-session-hardcoded">
+                          <div className="flex items-center gap-2">
+                            <Settings className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-left">
+                              <span className="font-medium">Hardcoded Job Assignments</span>
+                              <p className="text-xs text-muted-foreground font-normal">
+                                Staff assigned to specific jobs for all days of all weeks
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {(sessionDefaults.artsAndCraftsStaff.length + sessionDefaults.cardTradingStaff.length + sessionDefaults.customJobAssignments.allDays.length) > 0 && (
+                              <Badge variant="secondary">
+                                {sessionDefaults.artsAndCraftsStaff.length + sessionDefaults.cardTradingStaff.length + sessionDefaults.customJobAssignments.allDays.length} assigned
+                              </Badge>
+                            )}
+                            <ChevronDown className={`h-4 w-4 transition-transform ${hardcodedOpen ? 'rotate-180' : ''}`} />
+                          </div>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
                       {/* Arts & Crafts */}
                       <div className="border rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -1142,7 +1305,7 @@ export default function LunchtimeJobs() {
                       {/* Custom Staff-to-Job Assignment */}
                       <div className="border rounded-lg p-4 space-y-3">
                         <div>
-                          <Label className="text-base">Custom Job Assignments</Label>
+                          <Label className="text-base">Additional Job Assignments</Label>
                           <p className="text-xs text-muted-foreground">Assign any staff to any job (applies on their scheduled work days)</p>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1196,7 +1359,8 @@ export default function LunchtimeJobs() {
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CollapsibleContent>
+                    </Collapsible>
 
                     {/* Collapsible Advanced Options */}
                     <div className="space-y-4 pt-4 border-t">
@@ -1355,85 +1519,133 @@ export default function LunchtimeJobs() {
                   </TabsList>
 
                   {weekConfigs.map((config) => (
-                    <TabsContent key={config.weekNumber} value={`week-${config.weekNumber}`} className="space-y-6">
-                      {/* Staff Game Days */}
-                      <div className="space-y-2">
-                        <Label>Staff Game Days</Label>
-                        <p className="text-xs text-muted-foreground">Select days when staff games are scheduled</p>
-                        <div className="flex gap-2 flex-wrap">
-                          {DAYS.map((day) => (
-                            <Button
-                              key={day}
-                              variant={config.staffGameDays.includes(day) ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleToggleGameDay(day)}
-                              className="capitalize"
-                              data-testid={`button-gameday-${day}`}
-                            >
-                              {day}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Tie Dye Days */}
-                      <div className="space-y-2">
-                        <Label>Tie Dye Days</Label>
-                        <p className="text-xs text-muted-foreground">Select days when tie dye activities are scheduled</p>
-                        <div className="flex gap-2 flex-wrap">
-                          {DAYS.map((day) => (
-                            <Button
-                              key={day}
-                              variant={config.tieDyeDays.includes(day) ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleToggleTieDyeDay(day)}
-                              className="capitalize"
-                              data-testid={`button-tiedye-${day}`}
-                            >
-                              {day}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Tie Dye Staff */}
-                      {config.tieDyeDays.length > 0 && (
-                        <div className="space-y-2">
-                          <Label>Tie Dye Staff</Label>
-                          <p className="text-xs text-muted-foreground">Staff assigned to tie dye on selected days</p>
-                          <div className="flex gap-2">
-                            <Combobox
-                              options={filteredStaffOptions}
-                              value=""
-                              onValueChange={handleAddTieDyeStaff}
-                              placeholder="Add staff..."
-                              searchPlaceholder="Search staff..."
-                              emptyText="No staff found."
-                              className="flex-1"
-                              testId="select-tiedye-staff"
-                            />
-                          </div>
-                          {config.tieDyeStaff.length > 0 && (
-                            <div className="flex gap-2 flex-wrap mt-2">
-                              {config.tieDyeStaff.map((staffId) => (
-                                <Badge key={staffId} variant="secondary" className="gap-1">
-                                  {getStaffName(staffId)}
-                                  <button onClick={() => handleRemoveTieDyeStaff(staffId)}>
-                                    <X className="h-3 w-3" />
-                                  </button>
+                    <TabsContent key={config.weekNumber} value={`week-${config.weekNumber}`} className="space-y-4">
+                      {/* Week Schedule Section - Collapsible */}
+                      <Collapsible open={weekScheduleOpen} onOpenChange={setWeekScheduleOpen}>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between p-4 border rounded-lg h-auto hover-elevate" data-testid={`toggle-week-${config.weekNumber}-schedule`}>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-left">
+                                <span className="font-medium">Week Schedule</span>
+                                <p className="text-xs text-muted-foreground font-normal">
+                                  Staff games and tie dye days
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {(config.staffGameDays.length + config.tieDyeDays.length) > 0 && (
+                                <Badge variant="secondary">
+                                  {config.staffGameDays.length + config.tieDyeDays.length} days
                                 </Badge>
+                              )}
+                              <ChevronDown className={`h-4 w-4 transition-transform ${weekScheduleOpen ? 'rotate-180' : ''}`} />
+                            </div>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
+                          {/* Staff Game Days */}
+                          <div className="space-y-2">
+                            <Label>Staff Game Days</Label>
+                            <p className="text-xs text-muted-foreground">Select days when staff games are scheduled</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {DAYS.map((day) => (
+                                <Button
+                                  key={day}
+                                  variant={config.staffGameDays.includes(day) ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleToggleGameDay(day)}
+                                  className="capitalize"
+                                  data-testid={`button-gameday-${day}`}
+                                >
+                                  {day}
+                                </Button>
                               ))}
                             </div>
-                          )}
-                        </div>
-                      )}
+                          </div>
 
-                      {/* Hardcoded Assignments Section */}
-                      <div className="space-y-4 border rounded-lg p-4">
-                        <h4 className="font-medium">Hardcoded Job Assignments</h4>
-                        <p className="text-xs text-muted-foreground">
-                          Staff assigned here will be given these jobs for all days this week.
-                        </p>
+                          {/* Tie Dye Days */}
+                          <div className="space-y-2">
+                            <Label>Tie Dye Days</Label>
+                            <p className="text-xs text-muted-foreground">Select days when tie dye activities are scheduled</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {DAYS.map((day) => (
+                                <Button
+                                  key={day}
+                                  variant={config.tieDyeDays.includes(day) ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleToggleTieDyeDay(day)}
+                                  className="capitalize"
+                                  data-testid={`button-tiedye-${day}`}
+                                >
+                                  {day}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Tie Dye Staff */}
+                          {config.tieDyeDays.length > 0 && (
+                            <div className="space-y-2">
+                              <Label>Tie Dye Staff</Label>
+                              <p className="text-xs text-muted-foreground">Staff assigned to tie dye on selected days</p>
+                              <div className="flex gap-2">
+                                <Combobox
+                                  options={filteredStaffOptions}
+                                  value=""
+                                  onValueChange={handleAddTieDyeStaff}
+                                  placeholder="Add staff..."
+                                  searchPlaceholder="Search staff..."
+                                  emptyText="No staff found."
+                                  className="flex-1"
+                                  testId="select-tiedye-staff"
+                                />
+                              </div>
+                              {config.tieDyeStaff.length > 0 && (
+                                <div className="flex gap-2 flex-wrap mt-2">
+                                  {config.tieDyeStaff.map((staffId) => (
+                                    <Badge key={staffId} variant="secondary" className="gap-1">
+                                      {getStaffName(staffId)}
+                                      <button onClick={() => handleRemoveTieDyeStaff(staffId)}>
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CollapsibleContent>
+                      </Collapsible>
+
+                      {/* Hardcoded Assignments Section - Collapsible */}
+                      <Collapsible open={weekHardcodedOpen} onOpenChange={setWeekHardcodedOpen}>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between p-4 border rounded-lg h-auto hover-elevate" data-testid={`toggle-week-${config.weekNumber}-hardcoded`}>
+                            <div className="flex items-center gap-2">
+                              <Settings className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-left">
+                                <span className="font-medium">Hardcoded Job Assignments</span>
+                                <p className="text-xs text-muted-foreground font-normal">
+                                  Staff assigned to specific jobs for all days this week
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {((config.artsAndCraftsStaff.length > 0 ? config.artsAndCraftsStaff.length : sessionDefaults.artsAndCraftsStaff.length) + 
+                                (config.cardTradingStaff.length > 0 ? config.cardTradingStaff.length : sessionDefaults.cardTradingStaff.length) + 
+                                config.customJobAssignments.allDays.length) > 0 && (
+                                <Badge variant="secondary">
+                                  {(config.artsAndCraftsStaff.length > 0 ? config.artsAndCraftsStaff.length : sessionDefaults.artsAndCraftsStaff.length) + 
+                                   (config.cardTradingStaff.length > 0 ? config.cardTradingStaff.length : sessionDefaults.cardTradingStaff.length) + 
+                                   config.customJobAssignments.allDays.length} assigned
+                                </Badge>
+                              )}
+                              <ChevronDown className={`h-4 w-4 transition-transform ${weekHardcodedOpen ? 'rotate-180' : ''}`} />
+                            </div>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
 
                         {/* Arts & Crafts */}
                         <div className="border rounded-lg p-3 space-y-2">
@@ -1541,10 +1753,10 @@ export default function LunchtimeJobs() {
                           )}
                         </div>
 
-                        {/* Custom Job Assignments */}
+                        {/* Additional Job Assignments */}
                         <div className="border rounded-lg p-3 space-y-2">
                           <div>
-                            <Label className="text-sm">Custom Job Assignments</Label>
+                            <Label className="text-sm">Additional Job Assignments</Label>
                             <p className="text-xs text-muted-foreground">Assign any staff to any job (applies on their scheduled work days)</p>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1597,7 +1809,8 @@ export default function LunchtimeJobs() {
                             </div>
                           )}
                         </div>
-                      </div>
+                        </CollapsibleContent>
+                      </Collapsible>
 
                       {/* Collapsible Advanced Options */}
                       <div className="space-y-3 pt-4 border-t">
@@ -1848,6 +2061,133 @@ export default function LunchtimeJobs() {
                             })}
                           </div>
                         </div>
+
+                        {/* Job Target Overview */}
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-3">Target Staff per Job</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Normal staff assigned per day for each job
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(jobDayStats.byJob)
+                              .sort((a, b) => a[0].localeCompare(b[0]))
+                              .map(([jobName, stats]) => (
+                                <div key={jobName} className="flex items-center gap-1 text-sm">
+                                  <span className="text-muted-foreground">{jobName}:</span>
+                                  <Badge variant="outline">
+                                    {stats.normalStaff !== null ? stats.normalStaff : '-'}
+                                  </Badge>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+
+                        {/* Staffing Variations - Days that differ from target */}
+                        <div className="border rounded-lg p-4">
+                          <h4 className="font-medium mb-3">Staffing Variations</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Days where staffing differs from the target number for a job or staff from a particular group aren't split correctly
+                          </p>
+                          {(() => {
+                            // Build variations comparing each week/day to target (not average)
+                            const variations: Array<{
+                              jobName: string;
+                              week: number;
+                              day: string;
+                              count: number;
+                              target: number;
+                              type: 'above' | 'below';
+                            }> = [];
+                            
+                            for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
+                              if (stats.normalStaff === null) continue;
+                              
+                              for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
+                                const [weekStr, day] = weekDayKey.split('-');
+                                const week = parseInt(weekStr);
+                                
+                                if (count > stats.normalStaff) {
+                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'above' });
+                                } else if (count < stats.normalStaff) {
+                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'below' });
+                                }
+                              }
+                            }
+                            
+                            // Sort by week, then day, then job name
+                            variations.sort((a, b) => {
+                              if (a.week !== b.week) return a.week - b.week;
+                              const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
+                              if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
+                                return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+                              }
+                              return a.jobName.localeCompare(b.jobName);
+                            });
+                            
+                            if (variations.length === 0) {
+                              return (
+                                <p className="text-sm text-muted-foreground italic">
+                                  No variations found. All days match the target staffing levels.
+                                </p>
+                              );
+                            }
+                            
+                            return (
+                              <div className="space-y-2 max-h-64 overflow-auto">
+                                {variations.map((v, idx) => (
+                                  <div key={idx} className="flex items-center gap-2 text-sm">
+                                    <Badge 
+                                      variant="outline" 
+                                      className={v.type === 'above' 
+                                        ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
+                                        : 'border-blue-500 text-blue-700 dark:text-blue-400'}
+                                    >
+                                      Wk{v.week} {v.day.charAt(0).toUpperCase()}{v.day.slice(1, 3)}
+                                    </Badge>
+                                    <span className="text-muted-foreground">
+                                      {v.jobName}: <strong>{v.count}</strong> 
+                                      {v.type === 'above' ? ' ↑' : ' ↓'} (target: {v.target})
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
+                              Above target
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
+                              Below target
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Same-Group Warnings */}
+                        {jobDayStats.sameGroupWarnings.length > 0 && (
+                          <div className="border border-yellow-500 rounded-lg p-4 bg-yellow-50 dark:bg-yellow-950/20">
+                            <h4 className="font-medium mb-2 text-yellow-700 dark:text-yellow-400">
+                              Same Group on Same Day Warning
+                            </h4>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              All staff from these groups are working on the same day (excluding Staff Game days):
+                            </p>
+                            <div className="space-y-2">
+                              {jobDayStats.sameGroupWarnings.map((warning, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-sm">
+                                  <Badge variant="outline" className="border-yellow-500">
+                                    Week {warning.week} {warning.day.charAt(0).toUpperCase() + warning.day.slice(1)}
+                                  </Badge>
+                                  <span className="text-yellow-700 dark:text-yellow-400">
+                                    Group {warning.groupId}: {warning.staffNames.join(", ")}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="flex gap-2">
                           <Button

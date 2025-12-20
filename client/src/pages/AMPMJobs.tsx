@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings } from "lucide-react";
+import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,9 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -22,6 +24,16 @@ import {
 import { LogViewer, useLogStream } from "@/components/LogViewer";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, BarChart3, ScrollText, FileText } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface EligibleStaff {
   staff_name: string;
@@ -61,14 +73,31 @@ interface JobAssignment {
   staffIds: number[];
 }
 
+interface CustomStaff {
+  staff_id: number;
+  name: string;
+  gender: string;
+  custom_job_assignment: number | null;
+}
+
 export default function AMPMJobs() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [hardcodedAssignments, setHardcodedAssignments] = useState<JobAssignment[]>([]);
   const [customAssignments, setCustomAssignments] = useState<JobAssignment[]>([]);
+  const [staffToRemove, setStaffToRemove] = useState<number[]>([]);
+  const [staffToAdd, setStaffToAdd] = useState<CustomStaff[]>([]);
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
-  const [configOpen, setConfigOpen] = useState(true);
+  const [hardcodedOpen, setHardcodedOpen] = useState(true);
+  const [additionalOpen, setAdditionalOpen] = useState(false);
+  const [excludeOpen, setExcludeOpen] = useState(false);
+  const [addStaffOpen, setAddStaffOpen] = useState(false);
+  const [staffCounter, setStaffCounter] = useState(9900);
+  const [maxOverrides, setMaxOverrides] = useState<Record<number, boolean>>({});
+  const [customMaxOverrides, setCustomMaxOverrides] = useState<Record<number, boolean>>({});
+  const [pendingExcludeStaff, setPendingExcludeStaff] = useState<number | null>(null);
+  const [showExcludeConfirm, setShowExcludeConfirm] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
 
@@ -88,6 +117,17 @@ export default function AMPMJobs() {
     queryKey: ["/api/external-db/ampm-jobs"],
   });
 
+  // Fetch hardcoded job IDs from config for the selected session
+  const { data: hardcodedJobConfig } = useQuery<{ hardcodedJobIds: number[] }>({
+    queryKey: ["/api/config/ampm-jobs/hardcoded", selectedSessionId],
+    enabled: !!selectedSessionId,
+  });
+
+  // Get the list of hardcoded job IDs from config
+  const hardcodedJobIds = useMemo(() => {
+    return hardcodedJobConfig?.hardcodedJobIds || [];
+  }, [hardcodedJobConfig]);
+
   // Staff options for combobox
   const staffOptions = useMemo(() => {
     return eligibleStaff.map((s) => ({
@@ -96,13 +136,26 @@ export default function AMPMJobs() {
     }));
   }, [eligibleStaff]);
 
-  // Job options for combobox
+  // Job options for combobox (all jobs except hardcoded - for additional assignments)
   const jobOptions = useMemo(() => {
-    return ampmJobs.map((j) => ({
-      value: j.job_id.toString(),
-      label: `${j.job_name} (${j.job_code})`,
-    }));
-  }, [ampmJobs]);
+    return ampmJobs
+      .filter((j) => !hardcodedJobIds.includes(j.job_id))
+      .map((j) => ({
+        value: j.job_id.toString(),
+        label: `${j.job_name} (${j.job_code})`,
+      }));
+  }, [ampmJobs, hardcodedJobIds]);
+
+  // Hardcoded job options - only jobs that are in the config's hardcoded list
+  const hardcodedJobOptions = useMemo(() => {
+    if (hardcodedJobIds.length === 0) return [];
+    return ampmJobs
+      .filter((j) => hardcodedJobIds.includes(j.job_id))
+      .map((j) => ({
+        value: j.job_id.toString(),
+        label: `${j.job_name} (${j.job_code})`,
+      }));
+  }, [ampmJobs, hardcodedJobIds]);
 
   // Helper to get staff name by ID
   const getStaffName = (staffId: number) => {
@@ -114,6 +167,58 @@ export default function AMPMJobs() {
   const getJobName = (jobId: number) => {
     const job = ampmJobs.find(j => j.job_id === jobId);
     return job ? `${job.job_name} (${job.job_code})` : `Job ${jobId}`;
+  };
+
+  // Helper to get full job details by ID
+  const getJobDetails = (jobId: number): AMPMJob | undefined => {
+    return ampmJobs.find(j => j.job_id === jobId);
+  };
+
+  // Get staffing status for a job assignment
+  const getStaffingStatus = (jobId: number, currentCount: number) => {
+    const job = getJobDetails(jobId);
+    if (!job) return { status: 'ok' as const, normal: 0, max: 0 };
+    
+    const normal = job.normal_staff_assigned ?? 1;
+    const max = job.max_staff_assigned ?? normal + 1;
+    
+    if (currentCount > max) {
+      return { status: 'over-max' as const, normal, max };
+    } else if (currentCount > normal) {
+      return { status: 'over-normal' as const, normal, max };
+    }
+    return { status: 'ok' as const, normal, max };
+  };
+
+  // Get all assigned staff IDs across all assignments (including custom staff with job assignments)
+  const allAssignedStaffIds = useMemo(() => {
+    const hardcodedStaff = hardcodedAssignments.flatMap(a => a.staffIds);
+    const additionalStaff = customAssignments.flatMap(a => a.staffIds);
+    // Also include custom staff who have job assignments
+    const customStaffWithJobs = staffToAdd
+      .filter(s => s.custom_job_assignment)
+      .map(s => s.staff_id);
+    return [...hardcodedStaff, ...additionalStaff, ...customStaffWithJobs];
+  }, [hardcodedAssignments, customAssignments, staffToAdd]);
+
+  // Check if a staff member has conflicts (double assignment or assigned + removed)
+  const getStaffConflict = (staffId: number): { hasConflict: boolean; reason: string } => {
+    // Count how many times this staff is assigned
+    const assignmentCount = allAssignedStaffIds.filter(id => id === staffId).length;
+    
+    // Check if staff is both assigned and in remove list
+    const isInRemoveList = staffToRemove.includes(staffId);
+    const isAssigned = assignmentCount > 0;
+    
+    if (isAssigned && isInRemoveList) {
+      return { hasConflict: true, reason: 'Assigned and excluded' };
+    }
+    
+    if (assignmentCount > 1) {
+      return { hasConflict: true, reason: 'Double assignment' };
+    }
+    
+    return { hasConflict: false, reason: '' };
   };
 
   const formatSessionDisplay = (sessionId: number) => {
@@ -144,6 +249,23 @@ export default function AMPMJobs() {
   // Add staff to a hardcoded assignment
   const handleAddStaffToHardcoded = (jobId: number, staffId: string) => {
     const id = parseInt(staffId);
+    const assignment = hardcodedAssignments.find(a => a.jobId === jobId);
+    if (!assignment) return;
+    
+    const job = getJobDetails(jobId);
+    const max = job?.max_staff_assigned ?? 999;
+    const newCount = assignment.staffIds.length + 1;
+    
+    // Check if exceeding max without override
+    if (newCount > max && !maxOverrides[jobId]) {
+      toast({
+        title: "Maximum Exceeded",
+        description: `This job has a maximum of ${max} staff. Enable override to add more.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setHardcodedAssignments(hardcodedAssignments.map(a => {
       if (a.jobId === jobId) {
         if (a.staffIds.includes(id)) return a;
@@ -185,6 +307,23 @@ export default function AMPMJobs() {
   // Add staff to a custom assignment
   const handleAddStaffToCustom = (jobId: number, staffId: string) => {
     const id = parseInt(staffId);
+    const assignment = customAssignments.find(a => a.jobId === jobId);
+    if (!assignment) return;
+    
+    const job = getJobDetails(jobId);
+    const max = job?.max_staff_assigned ?? 999;
+    const newCount = assignment.staffIds.length + 1;
+    
+    // Check if exceeding max without override
+    if (newCount > max && !customMaxOverrides[jobId]) {
+      toast({
+        title: "Maximum Exceeded",
+        description: `This job has a maximum of ${max} staff. Enable override to add more.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setCustomAssignments(customAssignments.map(a => {
       if (a.jobId === jobId) {
         if (a.staffIds.includes(id)) return a;
@@ -203,6 +342,90 @@ export default function AMPMJobs() {
       return a;
     }));
   };
+
+  // Staff to remove handlers
+  const handleAddStaffToRemove = (staffId: string) => {
+    const id = parseInt(staffId);
+    if (staffToRemove.includes(id)) return;
+    
+    // Check if this staff has any existing assignments
+    const hasAssignment = allAssignedStaffIds.includes(id);
+    
+    if (hasAssignment) {
+      // Show confirmation dialog
+      setPendingExcludeStaff(id);
+      setShowExcludeConfirm(true);
+    } else {
+      // No conflict, add directly
+      setStaffToRemove([...staffToRemove, id]);
+    }
+  };
+
+  const confirmExcludeStaff = () => {
+    if (pendingExcludeStaff !== null) {
+      setStaffToRemove([...staffToRemove, pendingExcludeStaff]);
+      setPendingExcludeStaff(null);
+      setShowExcludeConfirm(false);
+    }
+  };
+
+  const cancelExcludeStaff = () => {
+    setPendingExcludeStaff(null);
+    setShowExcludeConfirm(false);
+  };
+
+  const handleRemoveFromRemoveList = (staffId: number) => {
+    setStaffToRemove(staffToRemove.filter(id => id !== staffId));
+  };
+
+  // Custom staff (staff_to_add) handlers
+  const [newCustomStaff, setNewCustomStaff] = useState<{
+    name: string;
+    gender: string;
+    custom_job_assignment: string;
+  }>({
+    name: "",
+    gender: "M",
+    custom_job_assignment: "",
+  });
+
+  const handleAddCustomStaff = () => {
+    if (!newCustomStaff.name.trim()) {
+      toast({
+        title: "Name Required",
+        description: "Please enter a staff name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newStaff: CustomStaff = {
+      staff_id: staffCounter,
+      name: newCustomStaff.name.trim(),
+      gender: newCustomStaff.gender,
+      custom_job_assignment: newCustomStaff.custom_job_assignment 
+        ? parseInt(newCustomStaff.custom_job_assignment) 
+        : null,
+    };
+
+    setStaffToAdd([...staffToAdd, newStaff]);
+    setStaffCounter(prev => prev + 1);
+    setNewCustomStaff({ name: "", gender: "M", custom_job_assignment: "" });
+    
+    toast({
+      title: "Staff Added",
+      description: `${newStaff.name} added to custom staff list`,
+    });
+  };
+
+  const handleRemoveCustomStaff = (staffId: number) => {
+    setStaffToAdd(staffToAdd.filter(s => s.staff_id !== staffId));
+  };
+
+  // Get filtered staff options (exclude removed staff)
+  const filteredStaffOptions = useMemo(() => {
+    return staffOptions.filter(s => !staffToRemove.includes(parseInt(s.value)));
+  }, [staffOptions, staffToRemove]);
 
   // Convert assignments to the format expected by the backend (job_id -> [staff_ids])
   const buildAssignmentPayload = (assignments: JobAssignment[]) => {
@@ -237,6 +460,8 @@ export default function AMPMJobs() {
 
     logStream.info(`Hardcoded assignments: ${Object.keys(hardcodedPayload).length} jobs`);
     logStream.info(`Custom assignments: ${Object.keys(customPayload).length} jobs`);
+    logStream.info(`Staff to remove: ${staffToRemove.length}`);
+    logStream.info(`Custom staff to add: ${staffToAdd.length}`);
 
     try {
       logStream.info("Preparing request...");
@@ -246,6 +471,8 @@ export default function AMPMJobs() {
         sessionId: selectedSessionId,
         hardcodedJobAssignments: hardcodedPayload,
         customJobAssignments: customPayload,
+        staffToRemove: staffToRemove,
+        staffToAdd: staffToAdd,
       });
 
       const data = await response.json();
@@ -413,41 +640,37 @@ export default function AMPMJobs() {
 
           {/* Configuration Section */}
           {selectedSessionId && (
-            <Card>
-              <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="cursor-pointer hover-elevate">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Settings className="h-5 w-5" />
-                        <div>
-                          <CardTitle>Job Assignment Configuration</CardTitle>
-                          <CardDescription className="mt-1">
-                            Configure hardcoded and custom job assignments for this session
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <ChevronDown className={`h-5 w-5 transition-transform ${configOpen ? 'rotate-180' : ''}`} />
-                    </div>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent className="space-y-6">
-                    {/* Hardcoded Assignments */}
-                    <div className="space-y-4">
+            <div className="space-y-4">
+              {/* Hardcoded Assignments */}
+              <Card>
+                <Collapsible open={hardcodedOpen} onOpenChange={setHardcodedOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-medium">Hardcoded Job Assignments</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Assign specific staff to specific jobs. These assignments are processed first.
-                          </p>
+                        <div className="flex items-center gap-2">
+                          <Settings className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Hardcoded Job Assignments</CardTitle>
+                            <CardDescription className="text-xs">
+                              Assign staff to predefined jobs ({hardcodedJobIds.length} jobs available)
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hardcodedAssignments.filter(a => a.staffIds.length > 0).length > 0 && (
+                            <Badge variant="secondary">{hardcodedAssignments.filter(a => a.staffIds.length > 0).length} jobs</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${hardcodedOpen ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
                           <Combobox
-                            options={jobOptions.filter(j => !hardcodedAssignments.some(a => a.jobId.toString() === j.value))}
+                            options={hardcodedJobOptions.filter(j => !hardcodedAssignments.some(a => a.jobId.toString() === j.value))}
                             placeholder="Select a job to add..."
                             onValueChange={handleAddHardcodedAssignment}
                             testId="combobox-add-hardcoded-job"
@@ -457,56 +680,135 @@ export default function AMPMJobs() {
 
                       {hardcodedAssignments.length > 0 && (
                         <div className="space-y-3">
-                          {hardcodedAssignments.map((assignment) => (
-                            <div key={assignment.jobId} className="border rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleRemoveHardcodedAssignment(assignment.jobId)}
-                                  data-testid={`button-remove-hardcoded-${assignment.jobId}`}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <div className="flex gap-2 flex-wrap">
-                                {assignment.staffIds.map((staffId) => (
-                                  <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                                    {getStaffName(staffId)}
-                                    <button
-                                      onClick={() => handleRemoveStaffFromHardcoded(assignment.jobId, staffId)}
-                                      className="ml-1 hover:text-destructive"
-                                      data-testid={`button-remove-hardcoded-staff-${assignment.jobId}-${staffId}`}
+                          {hardcodedAssignments.map((assignment) => {
+                            const staffingStatus = getStaffingStatus(assignment.jobId, assignment.staffIds.length);
+                            const job = getJobDetails(assignment.jobId);
+                            const isAtMax = assignment.staffIds.length >= (job?.max_staff_assigned ?? 999);
+                            
+                            return (
+                              <div 
+                                key={assignment.jobId} 
+                                className={`border rounded-lg p-3 space-y-2 ${
+                                  staffingStatus.status === 'over-max' ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 
+                                  staffingStatus.status === 'over-normal' ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : ''
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
+                                    <Badge 
+                                      variant={
+                                        staffingStatus.status === 'over-max' ? 'destructive' : 
+                                        staffingStatus.status === 'over-normal' ? 'outline' : 'secondary'
+                                      }
+                                      className={staffingStatus.status === 'over-normal' ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : ''}
                                     >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </Badge>
-                                ))}
+                                      {assignment.staffIds.length}/{staffingStatus.normal} staff
+                                    </Badge>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleRemoveHardcodedAssignment(assignment.jobId)}
+                                    data-testid={`button-remove-hardcoded-${assignment.jobId}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                
+                                {staffingStatus.status === 'over-normal' && (
+                                  <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                                    <span>Over normal staffing level ({staffingStatus.normal}). Max allowed: {staffingStatus.max}</span>
+                                  </div>
+                                )}
+                                
+                                {staffingStatus.status === 'over-max' && (
+                                  <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                                    <span>Exceeding maximum allowed ({staffingStatus.max})</span>
+                                  </div>
+                                )}
+                                
+                                <div className="flex gap-2 flex-wrap">
+                                  {assignment.staffIds.map((staffId) => {
+                                    const conflict = getStaffConflict(staffId);
+                                    return (
+                                      <Badge 
+                                        key={staffId} 
+                                        variant={conflict.hasConflict ? "destructive" : "secondary"} 
+                                        className="flex items-center gap-1"
+                                        title={conflict.hasConflict ? conflict.reason : undefined}
+                                      >
+                                        {getStaffName(staffId)}
+                                        <button
+                                          onClick={() => handleRemoveStaffFromHardcoded(assignment.jobId, staffId)}
+                                          className="ml-1 hover:text-destructive-foreground"
+                                          data-testid={`button-remove-hardcoded-staff-${assignment.jobId}-${staffId}`}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </Badge>
+                                    );
+                                  })}
+                                </div>
+                                
+                                {isAtMax && !maxOverrides[assignment.jobId] ? (
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <Checkbox
+                                      id={`override-${assignment.jobId}`}
+                                      checked={maxOverrides[assignment.jobId] || false}
+                                      onCheckedChange={(checked) => 
+                                        setMaxOverrides(prev => ({ ...prev, [assignment.jobId]: checked === true }))
+                                      }
+                                      data-testid={`checkbox-override-${assignment.jobId}`}
+                                    />
+                                    <Label htmlFor={`override-${assignment.jobId}`} className="text-xs text-muted-foreground cursor-pointer">
+                                      Override maximum limit ({staffingStatus.max} staff)
+                                    </Label>
+                                  </div>
+                                ) : (
+                                  <Combobox
+                                    options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
+                                    placeholder="Add staff..."
+                                    onValueChange={(value: string) => handleAddStaffToHardcoded(assignment.jobId, value)}
+                                    testId={`combobox-add-hardcoded-staff-${assignment.jobId}`}
+                                  />
+                                )}
                               </div>
-                              <Combobox
-                                options={staffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
-                                placeholder="Add staff..."
-                                onValueChange={(value: string) => handleAddStaffToHardcoded(assignment.jobId, value)}
-                                testId={`combobox-add-hardcoded-staff-${assignment.jobId}`}
-                              />
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
-                    </div>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
 
-                    {/* Custom Assignments */}
-                    <div className="space-y-4">
+              {/* Additional Job Assignments */}
+              <Card>
+                <Collapsible open={additionalOpen} onOpenChange={setAdditionalOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-medium">Custom Job Assignments</h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Additional staff assignments processed after hardcoded assignments.
-                          </p>
+                        <div className="flex items-center gap-2">
+                          <Plus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Additional Job Assignments</CardTitle>
+                            <CardDescription className="text-xs">
+                              Assign staff to any jobs beyond the predefined list
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {customAssignments.filter(a => a.staffIds.length > 0).length > 0 && (
+                            <Badge variant="secondary">{customAssignments.filter(a => a.staffIds.length > 0).length} jobs</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${additionalOpen ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
                           <Combobox
@@ -520,56 +822,279 @@ export default function AMPMJobs() {
 
                       {customAssignments.length > 0 && (
                         <div className="space-y-3">
-                          {customAssignments.map((assignment) => (
-                            <div key={assignment.jobId} className="border rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleRemoveCustomAssignment(assignment.jobId)}
-                                  data-testid={`button-remove-custom-${assignment.jobId}`}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <div className="flex gap-2 flex-wrap">
-                                {assignment.staffIds.map((staffId) => (
-                                  <Badge key={staffId} variant="secondary" className="flex items-center gap-1">
-                                    {getStaffName(staffId)}
-                                    <button
-                                      onClick={() => handleRemoveStaffFromCustom(assignment.jobId, staffId)}
-                                      className="ml-1 hover:text-destructive"
-                                      data-testid={`button-remove-custom-staff-${assignment.jobId}-${staffId}`}
+                          {customAssignments.map((assignment) => {
+                            const staffingStatus = getStaffingStatus(assignment.jobId, assignment.staffIds.length);
+                            const job = getJobDetails(assignment.jobId);
+                            const isAtMax = assignment.staffIds.length >= (job?.max_staff_assigned ?? 999);
+                            
+                            return (
+                              <div 
+                                key={assignment.jobId} 
+                                className={`border rounded-lg p-3 space-y-2 ${
+                                  staffingStatus.status === 'over-max' ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 
+                                  staffingStatus.status === 'over-normal' ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : ''
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">{getJobName(assignment.jobId)}</span>
+                                    <Badge 
+                                      variant={
+                                        staffingStatus.status === 'over-max' ? 'destructive' : 
+                                        staffingStatus.status === 'over-normal' ? 'outline' : 'secondary'
+                                      }
+                                      className={staffingStatus.status === 'over-normal' ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' : ''}
                                     >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </Badge>
-                                ))}
+                                      {assignment.staffIds.length}/{staffingStatus.normal} staff
+                                    </Badge>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleRemoveCustomAssignment(assignment.jobId)}
+                                    data-testid={`button-remove-custom-${assignment.jobId}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                
+                                {staffingStatus.status === 'over-normal' && (
+                                  <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                                    <span>Over normal staffing level ({staffingStatus.normal}). Max allowed: {staffingStatus.max}</span>
+                                  </div>
+                                )}
+                                
+                                {staffingStatus.status === 'over-max' && (
+                                  <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                                    <span>Exceeding maximum allowed ({staffingStatus.max})</span>
+                                  </div>
+                                )}
+                                
+                                <div className="flex gap-2 flex-wrap">
+                                  {assignment.staffIds.map((staffId) => {
+                                    const conflict = getStaffConflict(staffId);
+                                    return (
+                                      <Badge 
+                                        key={staffId} 
+                                        variant={conflict.hasConflict ? "destructive" : "secondary"} 
+                                        className="flex items-center gap-1"
+                                        title={conflict.hasConflict ? conflict.reason : undefined}
+                                      >
+                                        {getStaffName(staffId)}
+                                        <button
+                                          onClick={() => handleRemoveStaffFromCustom(assignment.jobId, staffId)}
+                                          className="ml-1 hover:text-destructive-foreground"
+                                          data-testid={`button-remove-custom-staff-${assignment.jobId}-${staffId}`}
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </Badge>
+                                    );
+                                  })}
+                                </div>
+                                
+                                {isAtMax && !customMaxOverrides[assignment.jobId] ? (
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <Checkbox
+                                      id={`custom-override-${assignment.jobId}`}
+                                      checked={customMaxOverrides[assignment.jobId] || false}
+                                      onCheckedChange={(checked) => 
+                                        setCustomMaxOverrides(prev => ({ ...prev, [assignment.jobId]: checked === true }))
+                                      }
+                                      data-testid={`checkbox-custom-override-${assignment.jobId}`}
+                                    />
+                                    <Label htmlFor={`custom-override-${assignment.jobId}`} className="text-xs text-muted-foreground cursor-pointer">
+                                      Override maximum limit ({staffingStatus.max} staff)
+                                    </Label>
+                                  </div>
+                                ) : (
+                                  <Combobox
+                                    options={filteredStaffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
+                                    placeholder="Add staff..."
+                                    onValueChange={(value: string) => handleAddStaffToCustom(assignment.jobId, value)}
+                                    testId={`combobox-add-custom-staff-${assignment.jobId}`}
+                                  />
+                                )}
                               </div>
-                              <Combobox
-                                options={staffOptions.filter(s => !assignment.staffIds.includes(parseInt(s.value)))}
-                                placeholder="Add staff..."
-                                onValueChange={(value: string) => handleAddStaffToCustom(assignment.jobId, value)}
-                                testId={`combobox-add-custom-staff-${assignment.jobId}`}
-                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
+
+              {/* Staff to Exclude */}
+              <Card>
+                <Collapsible open={excludeOpen} onOpenChange={setExcludeOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <UserMinus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Staff to Exclude</CardTitle>
+                            <CardDescription className="text-xs">
+                              Exclude staff from this session's assignments
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {staffToRemove.length > 0 && (
+                            <Badge variant="secondary">{staffToRemove.length} excluded</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${excludeOpen ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <Combobox
+                            options={staffOptions.filter(s => !staffToRemove.includes(parseInt(s.value)))}
+                            placeholder="Select staff to exclude..."
+                            onValueChange={handleAddStaffToRemove}
+                            testId="combobox-staff-to-remove"
+                          />
+                        </div>
+                      </div>
+
+                      {staffToRemove.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                          {staffToRemove.map((staffId) => {
+                            const conflict = getStaffConflict(staffId);
+                            return (
+                              <Badge 
+                                key={staffId} 
+                                variant={conflict.hasConflict ? "destructive" : "secondary"} 
+                                className="flex items-center gap-1"
+                                title={conflict.hasConflict ? conflict.reason : undefined}
+                              >
+                                {getStaffName(staffId)}
+                                <button
+                                  onClick={() => handleRemoveFromRemoveList(staffId)}
+                                  className="ml-1 hover:text-destructive-foreground"
+                                  data-testid={`button-unexclude-staff-${staffId}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
+
+              {/* Add Custom Staff */}
+              <Card>
+                <Collapsible open={addStaffOpen} onOpenChange={setAddStaffOpen}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover-elevate py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <UserPlus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <CardTitle className="text-base">Add Custom Staff</CardTitle>
+                            <CardDescription className="text-xs">
+                              Add staff members not in the database
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {staffToAdd.length > 0 && (
+                            <Badge variant="secondary">{staffToAdd.length} added</Badge>
+                          )}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${addStaffOpen ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
+                      <div className="border rounded-lg p-3 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="custom-staff-name" className="text-xs">Name</Label>
+                            <Input
+                              id="custom-staff-name"
+                              placeholder="Staff name"
+                              value={newCustomStaff.name}
+                              onChange={(e) => setNewCustomStaff(prev => ({ ...prev, name: e.target.value }))}
+                              data-testid="input-custom-staff-name"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="custom-staff-gender" className="text-xs">Gender</Label>
+                            <Select
+                              value={newCustomStaff.gender}
+                              onValueChange={(value) => setNewCustomStaff(prev => ({ ...prev, gender: value }))}
+                            >
+                              <SelectTrigger id="custom-staff-gender" data-testid="select-custom-staff-gender">
+                                <SelectValue placeholder="Gender" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="M">Male</SelectItem>
+                                <SelectItem value="F">Female</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Job Assignment (optional)</Label>
+                            <Combobox
+                              options={jobOptions}
+                              placeholder="Assign to job..."
+                              value={newCustomStaff.custom_job_assignment}
+                              onValueChange={(value: string) => setNewCustomStaff(prev => ({ ...prev, custom_job_assignment: value }))}
+                              testId="combobox-custom-staff-job"
+                            />
+                          </div>
+                        </div>
+                        <Button 
+                          onClick={handleAddCustomStaff} 
+                          size="sm"
+                          data-testid="button-add-custom-staff"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Staff
+                        </Button>
+                      </div>
+
+                      {staffToAdd.length > 0 && (
+                        <div className="space-y-2">
+                          {staffToAdd.map((staff) => (
+                            <div key={staff.staff_id} className="flex items-center justify-between border rounded-lg p-2">
+                              <div className="flex items-center gap-3">
+                                <span className="font-medium text-sm">{staff.name}</span>
+                                <Badge variant="outline">{staff.gender}</Badge>
+                                {staff.custom_job_assignment && (
+                                  <Badge variant="secondary">
+                                    {getJobName(staff.custom_job_assignment)}
+                                  </Badge>
+                                )}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveCustomStaff(staff.staff_id)}
+                                data-testid={`button-remove-custom-staff-${staff.staff_id}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
                           ))}
                         </div>
                       )}
-                    </div>
-
-                    {/* Config Summary */}
-                    <div className="pt-4 border-t">
-                      <div className="flex gap-4 text-sm text-muted-foreground">
-                        <span>Hardcoded: {hardcodedAssignments.filter(a => a.staffIds.length > 0).length} jobs configured</span>
-                        <span>Custom: {customAssignments.filter(a => a.staffIds.length > 0).length} jobs configured</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </CollapsibleContent>
-              </Collapsible>
-            </Card>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
+            </div>
           )}
 
           {/* Actions */}
@@ -646,15 +1171,35 @@ export default function AMPMJobs() {
                     {assignmentResults.length > 0 ? (
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {resultsByJob.map(([jobName, results]) => (
-                            <div key={jobName} className="border rounded-lg p-3">
-                              <div className="text-sm font-medium truncate" title={jobName}>
-                                {jobName}
+                          {resultsByJob.map(([jobName, results]) => {
+                            const jobId = results[0]?.job_id;
+                            const job = jobId ? getJobDetails(jobId) : null;
+                            const target = job?.normal_staff_assigned ?? null;
+                            const isOverTarget = target !== null && results.length > target;
+                            const isUnderTarget = target !== null && results.length < target;
+                            
+                            return (
+                              <div 
+                                key={jobName} 
+                                className={`border rounded-lg p-3 ${
+                                  isOverTarget ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : 
+                                  isUnderTarget ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' : ''
+                                }`}
+                              >
+                                <div className="text-sm font-medium truncate" title={jobName}>
+                                  {jobName}
+                                </div>
+                                <div className="text-2xl font-bold mt-1">{results.length}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  staff assigned {target !== null && (
+                                    <span className={isOverTarget ? 'text-yellow-600' : isUnderTarget ? 'text-blue-600' : ''}>
+                                      (target: {target})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-2xl font-bold mt-1">{results.length}</div>
-                              <div className="text-xs text-muted-foreground">staff assigned</div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         <div className="text-sm text-muted-foreground pt-2 border-t">
                           Total: {assignmentResults.length} assignments across {resultsByJob.length} jobs
@@ -762,6 +1307,32 @@ export default function AMPMJobs() {
           )}
         </div>
       </div>
+
+      {/* Confirmation Dialog for Excluding Staff with Assignments */}
+      <AlertDialog open={showExcludeConfirm} onOpenChange={setShowExcludeConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Staff Has Existing Assignment
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingExcludeStaff && (
+                <>
+                  <strong>{getStaffName(pendingExcludeStaff)}</strong> is already assigned to a job. 
+                  Are you sure you want to exclude them? This will create a conflict that you'll need to resolve.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelExcludeStaff}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmExcludeStaff} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Exclude Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

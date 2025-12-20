@@ -2411,10 +2411,11 @@ def build_multi_week_schedule(conn, cur, session_id):
         all_debug_outputs['all_week_assignments'] = all_week_assignments
         return all_debug_outputs
     
-    # Normal mode: return both formats
+    # Normal mode: return both formats and raw assignments for UI
     return {
         'df_full_session': df_full_session,
-        'df_wide_format': df_wide_format
+        'df_wide_format': df_wide_format,
+        'all_week_assignments': all_week_assignments
     }
 
 
@@ -2423,7 +2424,7 @@ def export_and_upload_schedule(df_full_session, df_wide_format,
                                output_dir='exports'):
     """
     Export schedule DataFrames to CSV and upload wide format to Google Sheets.
-    Loads spreadsheet_id from credentials.json automatically.
+    Loads spreadsheet_id from environment variables or credentials.json.
     
     Parameters
     ----------
@@ -2443,15 +2444,22 @@ def export_and_upload_schedule(df_full_session, df_wide_format,
     """
     import os
     
-    # Load spreadsheet_id from credentials
     base_dir = Path(__file__).resolve().parents[1]
-    creds_file = base_dir / "config" / "credentials.json"
     
-    with open(creds_file, 'r') as f:
-        creds_data = json.load(f)
-        spreadsheet_id = creds_data['google_sheets']['spreadsheet_id']
+    # Load spreadsheet_id from environment or credentials file
+    spreadsheet_id = os.environ.get('GOOGLE_SHEETS_SPREADSHEET_ID')
     
-    print(f"\nLoaded Google Sheets spreadsheet ID from credentials")
+    if spreadsheet_id:
+        print(f"\nLoaded Google Sheets spreadsheet ID from environment variables")
+    else:
+        # Fall back to credentials.json for local development
+        creds_file = base_dir / "config" / "credentials.json"
+        
+        with open(creds_file, 'r') as f:
+            creds_data = json.load(f)
+            spreadsheet_id = creds_data['google_sheets']['spreadsheet_id']
+        
+        print(f"\nLoaded Google Sheets spreadsheet ID from credentials.json")
     
     # Create exports directory in base directory
     output_dir = base_dir / output_dir
@@ -2520,13 +2528,38 @@ def print_debug_info(debug_outputs):
 
 def authenticate_google_sheets():
     """Authenticate with Google Sheets API using service account."""
-    # Load credentials from merged credentials file
-    base_dir = Path(__file__).resolve().parents[1]
-    creds_file = base_dir / "config" / "credentials.json"
+    import os
     
-    with open(creds_file, 'r') as f:
-        creds_data = json.load(f)
-        service_account_info = creds_data['google_service_account']
+    # Check for environment variables first
+    private_key = os.environ.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY')
+    
+    if private_key:
+        # Clean up private key - handle various formats
+        private_key = private_key.strip('"').strip("'")
+        private_key = private_key.replace('\\n', '\n')
+        
+        # Build service account info from environment variables
+        service_account_info = {
+            "type": "service_account",
+            "project_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_PROJECT_ID', ''),
+            "private_key_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID', ''),
+            "private_key": private_key,
+            "client_email": os.environ.get('GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL', ''),
+            "client_id": os.environ.get('GOOGLE_SERVICE_ACCOUNT_CLIENT_ID', ''),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+        }
+        print("Using Google credentials from environment variables")
+    else:
+        # Fall back to credentials.json for local development
+        base_dir = Path(__file__).resolve().parents[1]
+        creds_file = base_dir / "config" / "credentials.json"
+        
+        with open(creds_file, 'r') as f:
+            creds_data = json.load(f)
+            service_account_info = creds_data['google_service_account']
+        print("Using Google credentials from credentials.json")
     
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
     creds = Credentials.from_service_account_info(

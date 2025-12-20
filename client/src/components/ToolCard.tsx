@@ -8,9 +8,12 @@ type ToolCardProps = {
   title: string;
   description: string;
   comingSoon?: boolean;
+  iconSize?: number;
 };
 
-export function ToolCard({ id, icon: Icon, title, description, comingSoon }: ToolCardProps) {
+export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconSize = 20 }: ToolCardProps) {
+  const iconClassName = `text-[#1a5568] dark:text-[#0a2530]`;
+  const iconStyle = { width: iconSize, height: iconSize };
   if (comingSoon) {
     return (
       <div
@@ -18,8 +21,8 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon }: Too
         data-testid={`card-tool-${id}`}
       >
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl grid place-content-center bg-muted">
-            <Icon className="h-5 w-5" />
+          <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#47c8f5] dark:bg-[#47c8f5]">
+            <Icon className={iconClassName} style={iconStyle} strokeWidth={1.5} />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -40,8 +43,8 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon }: Too
       data-testid={`card-tool-${id}`}
     >
       <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl grid place-content-center bg-muted">
-          <Icon className="h-5 w-5" />
+        <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#47c8f5] dark:bg-[#47c8f5]">
+          <Icon className={iconClassName} style={iconStyle} strokeWidth={1.5} />
         </div>
         <div>
           <h3 className="font-semibold tracking-tight">{title}</h3>

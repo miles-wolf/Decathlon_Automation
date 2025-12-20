@@ -439,7 +439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Write each week's config to a separate JSON file
-      if (weekConfigs && Array.isArray(weekConfigs)) {
+      if (weekConfigs && Array.isArray(weekConfigs) && weekConfigs.length > 0) {
         console.log(`Writing ${weekConfigs.length} week config(s) to ${runDir}...`);
         
         for (let i = 0; i < weekConfigs.length; i++) {
@@ -449,7 +449,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`  Written: lunchjob_week_${weekNum}.json`);
         }
       } else {
-        console.log("No weekConfigs provided, pipeline will use existing files");
+        // Default to week 1 config if no weekConfigs provided
+        console.log("No weekConfigs provided, creating default week 1 config");
+        const defaultConfig = {
+          staff_game_days: [],
+          tie_dye_days: [],
+          tie_dye_staff: [],
+          pattern_based_jobs: [],
+          staff_to_remove: [],
+          staff_to_add: [],
+          arts_and_crafts_staff: [],
+          card_trading_staff: [],
+          custom_job_assignments: { all_days: [], specific_days: [] },
+          debug: false,
+          verbose: false
+        };
+        const configPath = pathModule.join(runDir, `lunchjob_week_1.json`);
+        fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+        console.log(`  Written default: lunchjob_week_1.json`);
       }
 
       // Prepare environment variables for the Python script
@@ -534,7 +551,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/execute/ampm-jobs", async (req, res) => {
     try {
-      const { sessionId, hardcodedJobAssignments, customJobAssignments } = req.body;
+      const { 
+        sessionId, 
+        hardcodedJobAssignments, 
+        customJobAssignments,
+        staffToRemove,
+        staffToAdd
+      } = req.body;
 
       if (!sessionId) {
         return res.status(400).json({ error: "Session ID is required" });
@@ -564,11 +587,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fs.mkdirSync(sessionDir, { recursive: true });
       }
       
-      // Write the input config JSON file
+      // Write the input config JSON file with all UI selections
       const configData = {
         session_id: sessionId,
         hardcoded_job_assignments: hardcodedJobAssignments || {},
-        custom_job_assignments: customJobAssignments || {}
+        custom_job_assignments: customJobAssignments || {},
+        staff_to_remove: staffToRemove || [],
+        staff_to_add: staffToAdd || []
       };
       
       const configPath = pathModule.join(sessionDir, "ampmjob_inputs.json");
@@ -1096,6 +1121,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching AM/PM jobs:", error);
       res.status(500).json({ error: error.message || "Failed to fetch AM/PM jobs" });
     }
+  });
+
+  // Get hardcoded job IDs - constant list for all sessions
+  // These are the predefined jobs that can have hardcoded staff assignments
+  app.get("/api/config/ampm-jobs/hardcoded/:sessionId", async (_req, res) => {
+    // Constant list of hardcoded job IDs (same for all sessions)
+    const hardcodedJobIds = [1101, 1105, 1113, 1117, 1173, 1177, 1181, 1189];
+    res.json({ hardcodedJobIds });
   });
 
   const httpServer = createServer(app);

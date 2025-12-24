@@ -665,8 +665,13 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
 ##section code author miles
 def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, df_lunch_jobs):
     """
-    Ensures that Counselor Activity (job_id: 1077) has at least one counselor (role_id: 1005) 
-    assigned on each day. If not, swaps a JC with a counselor from another job.
+    Ensures that Counselor Activity (job_id: 1077) has:
+    - 1-2 counselors (role_id: 1005)
+    - 1-2 junior counselors (role_id: 1006)
+    - Never all 3 of one role
+    
+    This function validates and fixes counselor activity assignments to meet role mix requirements.
+    It uses multiple strategies to swap staff to achieve proper role balance.
     
     Parameters:
     - df_all_assignments: dataframe of all assignments
@@ -674,9 +679,9 @@ def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, d
     - df_lunch_jobs: lunch jobs dataframe
     
     Returns:
-    - df_all_assignments: updated assignments with counselor requirement met
+    - df_all_assignments: updated assignments with role mix requirement met
     """
-    COUNSELOR_ACTIVITY_JOB_ID = 1077
+    COUNSELOR_ACTIVITY_JOB_ID = 1005
     COUNSELOR_ROLE_ID = 1005
     JUNIOR_COUNSELOR_ROLE_ID = 1006
     
@@ -686,84 +691,646 @@ def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, d
     ]
     
     if len(counselor_activity_assignments) == 0:
-        return df_all_assignments  # No counselor activity assignments to check
+        print("\nℹ️  No Counselor Activity assignments found - skipping counselor validation")
+        return df_all_assignments
     
     # Get unique days where counselor activity occurs
     ca_days = counselor_activity_assignments['day_name'].unique()
     
+    print(f"\n{'='*80}")
+    print(f"VALIDATING COUNSELOR ACTIVITY ROLE MIX (Need 1-2 C + 1-2 JC)")
+    print(f"{'='*80}")
+    
     for day in ca_days:
         # Get counselor activity assignments for this day
         day_ca_assignments = df_all_assignments[
-            (df_all_assignments['day_name'] == day) & 
+            (df_all_assignments['day_name'].str.lower() == day.lower()) & 
             (df_all_assignments['job_id'] == COUNSELOR_ACTIVITY_JOB_ID)
         ]
         
         # Get staff IDs assigned to counselor activity this day
         ca_staff_ids = day_ca_assignments['staff_id'].tolist()
         
+        if len(ca_staff_ids) == 0:
+            print(f"\n⚠️  {day}: No staff assigned to Counselor Activity")
+            continue
+        
         # Check roles of assigned staff
         ca_staff_roles = df_staff_clean[df_staff_clean['staff_id'].isin(ca_staff_ids)]
         counselor_count = len(ca_staff_roles[ca_staff_roles['role_id'] == COUNSELOR_ROLE_ID])
+        jc_count = len(ca_staff_roles[ca_staff_roles['role_id'] == JUNIOR_COUNSELOR_ROLE_ID])
         
+        print(f"\n{day}: Counselor Activity has {counselor_count} counselor(s), {jc_count} JC(s)")
+        
+        # Check if role mix is valid (1-2 of each, never all 3 of one role)
+        if counselor_count >= 1 and counselor_count <= 2 and jc_count >= 1 and jc_count <= 2:
+            print(f"   ✓ Role mix is valid")
+            continue
+        
+        # Need to fix the role mix
         if counselor_count == 0:
-            print(f"\n⚠️  Warning: Counselor Activity on {day} has no counselors!")
+            print(f"   ⚠️  FIXING: No counselors - need to swap in at least 1 counselor")
+            needed_role = COUNSELOR_ROLE_ID
+            excess_role = JUNIOR_COUNSELOR_ROLE_ID
+        elif jc_count == 0:
+            print(f"   ⚠️  FIXING: No JCs - need to swap in at least 1 JC")
+            needed_role = JUNIOR_COUNSELOR_ROLE_ID
+            excess_role = COUNSELOR_ROLE_ID
+        else:
+            # This should not happen, but just in case
+            print(f"   ✓ Role counts are within acceptable range")
+            continue
+        
+        # Determine which pattern should be working this day
+        day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+        
+        # Get all assignments for this day (excluding counselor activity) - case insensitive
+        day_assignments = df_all_assignments[df_all_assignments['day_name'].str.lower() == day.lower()]
+        other_job_assignments = day_assignments[day_assignments['job_id'] != COUNSELOR_ACTIVITY_JOB_ID]
+        
+        # Define jobs that should NOT be swapped from (hardcoded/special jobs)
+        # 1001: Arts & Crafts, 1009: Card Trading, 1045: Tie Dye, 1100: Staff Game
+        # 1013: Obstacle Course, 1041: Tallying Scores
+        PROTECTED_JOB_IDS = [1001, 1009, 1045, 1100, 1013, 1041]
+        
+        # Filter to only non-protected jobs
+        swappable_job_assignments = other_job_assignments[
+            ~other_job_assignments['job_id'].isin(PROTECTED_JOB_IDS)
+        ]
+        
+        # Find staff with the needed role on swappable jobs this day
+        swappable_staff_ids = swappable_job_assignments['staff_id'].tolist()
+        staff_with_needed_role = df_staff_clean[
+            (df_staff_clean['staff_id'].isin(swappable_staff_ids)) &
+            (df_staff_clean['role_id'] == needed_role) &
+            (df_staff_clean['actual_assignment'] == day_pattern)
+        ]
+        
+        if len(staff_with_needed_role) == 0:
+            role_name = "counselor" if needed_role == COUNSELOR_ROLE_ID else "JC"
+            print(f"   ⚠️  ERROR: No {role_name}s available on swappable jobs for {day}")
+            print(f"      All {role_name}s may be on protected jobs (Arts & Crafts, Card Trading, Tie Dye, etc.)")
+            continue
+        
+        # Strategy: Prioritize swapping from jobs with multiple staff (>1)
+        # Only use single-staff jobs as a fallback
+        job_staff_counts = swappable_job_assignments.groupby('job_id').size()
+        
+        # First pass: Try to find staff from a job with multiple staff
+        best_staff_id = None
+        best_staff_job_name = None
+        best_staff_count = 0
+        
+        for _, staff_member in staff_with_needed_role.iterrows():
+            staff_id = staff_member['staff_id']
+            staff_job_row = swappable_job_assignments[swappable_job_assignments['staff_id'] == staff_id]
             
-            # Find a JC on counselor activity to swap
-            jcs_on_ca = ca_staff_roles[ca_staff_roles['role_id'] == JUNIOR_COUNSELOR_ROLE_ID]
+            if len(staff_job_row) == 0:
+                continue
+                
+            staff_job_id = staff_job_row.iloc[0]['job_id']
+            staff_on_job = job_staff_counts.get(staff_job_id, 0)
             
-            if len(jcs_on_ca) == 0:
-                print(f"   ERROR: No staff to swap on Counselor Activity for {day}")
+            # Prioritize jobs with MORE staff (>1) - this keeps single-staff jobs intact
+            if staff_on_job > 1 and staff_on_job > best_staff_count:
+                best_staff_count = staff_on_job
+                best_staff_id = staff_id
+                best_staff_job_name = staff_job_row.iloc[0]['job_name']
+        
+        # Second pass: If no multi-staff jobs found, use any staff as fallback
+        if best_staff_id is None:
+            print(f"      No staff with needed role on multi-staff jobs - using fallback")
+            staff_to_use = staff_with_needed_role.iloc[0]
+            best_staff_id = staff_to_use['staff_id']
+            staff_job_row = swappable_job_assignments[swappable_job_assignments['staff_id'] == best_staff_id]
+            if len(staff_job_row) > 0:
+                best_staff_job_name = staff_job_row.iloc[0]['job_name']
+                best_staff_count = job_staff_counts.get(staff_job_row.iloc[0]['job_id'], 0)
+        
+        if best_staff_id is None:
+            role_name = "counselor" if needed_role == COUNSELOR_ROLE_ID else "JC"
+            print(f"   ⚠️  ERROR: Could not find a suitable {role_name} to swap on {day}")
+            continue
+        
+        incoming_staff_id = best_staff_id
+        
+        # Get the incoming staff's current job details
+        incoming_staff_job = swappable_job_assignments[swappable_job_assignments['staff_id'] == incoming_staff_id].iloc[0]
+        incoming_job_id = incoming_staff_job['job_id']
+        incoming_job_name = best_staff_job_name
+        
+        # Find someone on counselor activity to swap out (someone with excess role)
+        ca_staff_to_swap = ca_staff_roles[ca_staff_roles['role_id'] == excess_role]
+        
+        if len(ca_staff_to_swap) == 0:
+            role_name = "counselor" if needed_role == COUNSELOR_ROLE_ID else "JC"
+            print(f"   ⚠️  ERROR: No staff to swap from Counselor Activity on {day}")
+            continue
+        
+        outgoing_staff = ca_staff_to_swap.iloc[0]
+        outgoing_staff_id = outgoing_staff['staff_id']
+        outgoing_role_name = "Counselor" if outgoing_staff['role_id'] == COUNSELOR_ROLE_ID else "JC"
+        incoming_role_name = "Counselor" if needed_role == COUNSELOR_ROLE_ID else "JC"
+        
+        job_staff_indicator = f"({best_staff_count} staff)" if best_staff_count > 1 else "(single-staff job)"
+        print(f"   Swapping: {outgoing_role_name} {outgoing_staff_id} (CA) ↔ {incoming_role_name} {incoming_staff_id} ({incoming_job_name} {job_staff_indicator})")
+        
+        # Perform the swap - use case-insensitive day comparison
+        # Update person leaving counselor activity to go to incoming staff's old job
+        df_all_assignments.loc[
+            (df_all_assignments['day_name'].str.lower() == day.lower()) & 
+            (df_all_assignments['staff_id'] == outgoing_staff_id),
+            ['job_id', 'job_code', 'job_name']
+        ] = [incoming_job_id, incoming_staff_job['job_code'], incoming_job_name]
+        
+        # Update incoming staff to go to counselor activity
+        ca_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].iloc[0]
+        df_all_assignments.loc[
+            (df_all_assignments['day_name'].str.lower() == day.lower()) & 
+            (df_all_assignments['staff_id'] == incoming_staff_id),
+            ['job_id', 'job_code', 'job_name']
+        ] = [COUNSELOR_ACTIVITY_JOB_ID, ca_job_info['job_code'], ca_job_info['job_name']]
+        
+        print(f"   ✓ FIXED: Counselor Activity now has proper role mix")
+    
+    print(f"\n{'='*80}\n")
+    return df_all_assignments
+
+
+def ensure_minimum_tie_dye_staff(df_all_assignments, df_staff_clean, df_lunch_jobs, df_days, tie_dye_days_config=None, locked_staff_days=None):
+    """
+    Ensures that Tie Dye (job_id: 1045) has at least 2 staff assigned on each day it occurs.
+    If not, pulls additional staff from other jobs to meet the minimum requirement.
+    
+    If tie_dye_days_config is provided and no assignments exist, creates assignments from scratch.
+    
+    Parameters:
+    - df_all_assignments: dataframe of all assignments
+    - df_staff_clean: cleaned staff dataframe with role and pattern information
+    - df_lunch_jobs: lunch jobs dataframe
+    - df_days: days dataframe
+    - tie_dye_days_config: list of days when tie dye should occur (from config)
+    - locked_staff_days: set of (staff_id, day_name) tuples that cannot be reassigned
+    
+    Returns:
+    - df_all_assignments: updated assignments with minimum tie dye staff met
+    """
+    if locked_staff_days is None:
+        locked_staff_days = set()
+    TIE_DYE_JOB_ID = 1045
+    MIN_TIE_DYE_STAFF = 2
+    
+    # Check if tie dye exists in assignments
+    tie_dye_assignments = df_all_assignments[
+        df_all_assignments['job_id'] == TIE_DYE_JOB_ID
+    ]
+    
+    # Determine which days tie dye should occur
+    if len(tie_dye_assignments) == 0 and tie_dye_days_config:
+        # No assignments but config specifies days - use config days
+        print(f"\nℹ️  No Tie Dye assignments found, but tie_dye_days specified in config: {tie_dye_days_config}")
+        print(f"   Creating assignments from scratch...")
+        # Normalize day names to lowercase for comparison
+        config_days_lower = [d.lower() for d in tie_dye_days_config]
+        available_days_lower = {d.lower(): d for d in df_days['day_name'].values}
+        tie_dye_days = [available_days_lower[d] for d in config_days_lower if d in available_days_lower]
+        
+        if len(tie_dye_days) == 0:
+            print(f"   ⚠️  WARNING: Configured tie dye days {tie_dye_days_config} don't match available days {list(df_days['day_name'].values)}")
+            return df_all_assignments
+        print(f"   Matched days: {tie_dye_days}")
+    elif len(tie_dye_assignments) == 0:
+        # No assignments and no config - skip
+        print("\nℹ️  No Tie Dye assignments found - skipping tie dye validation")
+        return df_all_assignments
+    else:
+        # Use days from existing assignments
+        tie_dye_days = tie_dye_assignments['day_name'].unique()
+    
+    print(f"\n{'='*80}")
+    print(f"VALIDATING TIE DYE STAFF ASSIGNMENTS")
+    print(f"{'='*80}")
+    
+    for day in tie_dye_days:
+        # Get tie dye assignments for this day
+        day_tie_dye = df_all_assignments[
+            (df_all_assignments['day_name'] == day) & 
+            (df_all_assignments['job_id'] == TIE_DYE_JOB_ID)
+        ]
+        
+        current_count = len(day_tie_dye)
+        print(f"\n{day}: Tie Dye has {current_count} staff assigned")
+        
+        if current_count >= MIN_TIE_DYE_STAFF:
+            print(f"   ✓ Requirement met - at least {MIN_TIE_DYE_STAFF} staff assigned")
+            continue
+        
+        # Need to add more staff to tie dye
+        staff_needed = MIN_TIE_DYE_STAFF - current_count
+        print(f"   ⚠️  FIXING: Need {staff_needed} more staff for Tie Dye")
+        
+        # Determine which pattern works this day
+        day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+        
+        # Get all assignments for this day (excluding tie dye and protected jobs)
+        day_assignments = df_all_assignments[df_all_assignments['day_name'] == day]
+        
+        # Define jobs that should NOT be pulled from
+        # 1001: Arts & Crafts (pattern-based job)
+        # 1009: Card Trading (pattern-based job)
+        # 1005: Counselor Activity (has its own requirements)
+        # 1100: Staff Game (everyone assigned)
+        PROTECTED_FROM_TIE_DYE = [1001, 1009, 1005, 1100]
+        
+        swappable_assignments = day_assignments[
+            (~day_assignments['job_id'].isin(PROTECTED_FROM_TIE_DYE)) &
+            (day_assignments['job_id'] != TIE_DYE_JOB_ID)
+        ].copy()  # Make explicit copy to avoid reference issues
+        
+        # Get staff from swappable jobs with the correct pattern
+        # EXCLUDE locked staff - they cannot be reassigned
+        swappable_staff_ids = swappable_assignments['staff_id'].tolist()
+        locked_staff_ids_for_day = [staff_id for (staff_id, d) in locked_staff_days if d == day]
+        
+        available_staff = df_staff_clean[
+            (df_staff_clean['staff_id'].isin(swappable_staff_ids)) &
+            (df_staff_clean['actual_assignment'] == day_pattern) &
+            (~df_staff_clean['staff_id'].isin(locked_staff_ids_for_day))  # Exclude locked staff
+        ]
+        
+        if len(available_staff) == 0:
+            print(f"   ⚠️  ERROR: No staff available to assign to Tie Dye on {day}")
+            continue
+        
+        # Prioritize taking staff from jobs with multiple people
+        job_staff_counts = swappable_assignments.groupby('job_id').size()
+        
+        staff_to_add = []
+        
+        # First pass: Find staff from jobs with multiple people
+        for _, staff in available_staff.iterrows():
+            if len(staff_to_add) >= staff_needed:
+                break
+            
+            staff_id = staff['staff_id']
+            staff_job_row = swappable_assignments[swappable_assignments['staff_id'] == staff_id]
+            
+            if len(staff_job_row) == 0:
                 continue
             
-            jc_to_swap = jcs_on_ca.iloc[0]
-            jc_id = jc_to_swap['staff_id']
-            jc_pattern = jc_to_swap['actual_assignment']
+            staff_job_id = staff_job_row.iloc[0]['job_id']
+            staff_on_job = job_staff_counts.get(staff_job_id, 0)
             
-            # Find a counselor on a different job this day with the same pattern
-            day_assignments = df_all_assignments[df_all_assignments['day_name'] == day]
-            other_job_staff = day_assignments[day_assignments['job_id'] != COUNSELOR_ACTIVITY_JOB_ID]['staff_id'].tolist()
+            # Only take from jobs with 2+ staff
+            if staff_on_job > 1:
+                staff_to_add.append({
+                    'staff_id': staff_id,
+                    'current_job_id': staff_job_id,
+                    'current_job_name': staff_job_row.iloc[0]['job_name'],
+                    'staff_count': staff_on_job
+                })
+        
+        # Second pass: If still need more, take from any job
+        if len(staff_to_add) < staff_needed:
+            print(f"      Not enough staff on multi-staff jobs - using any available staff")
+            for _, staff in available_staff.iterrows():
+                if len(staff_to_add) >= staff_needed:
+                    break
+                
+                staff_id = staff['staff_id']
+                
+                # Skip if already added
+                if any(s['staff_id'] == staff_id for s in staff_to_add):
+                    continue
+                
+                staff_job_row = swappable_assignments[swappable_assignments['staff_id'] == staff_id]
+                
+                if len(staff_job_row) == 0:
+                    continue
+                
+                staff_job_id = staff_job_row.iloc[0]['job_id']
+                staff_on_job = job_staff_counts.get(staff_job_id, 0)
+                
+                staff_to_add.append({
+                    'staff_id': staff_id,
+                    'current_job_id': staff_job_id,
+                    'current_job_name': staff_job_row.iloc[0]['job_name'],
+                    'staff_count': staff_on_job
+                })
+        
+        # Perform the reassignments
+        tie_dye_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == TIE_DYE_JOB_ID].iloc[0]
+        
+        for staff_info in staff_to_add:
+            staff_id = staff_info['staff_id']
+            old_job_name = staff_info['current_job_name']
+            job_indicator = f"({staff_info['staff_count']} staff)" if staff_info['staff_count'] > 1 else "(single-staff job)"
             
-            # Determine which pattern should be working this day
-            day_pattern_for_swap = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+            print(f"   Moving: Staff {staff_id} from {old_job_name} {job_indicator} → Tie Dye")
             
-            counselors_on_other_jobs = df_staff_clean[
-                (df_staff_clean['staff_id'].isin(other_job_staff)) &
-                (df_staff_clean['role_id'] == COUNSELOR_ROLE_ID) &
-                (df_staff_clean['actual_assignment'] == day_pattern_for_swap)
+            # Check if this staff already has an assignment on this day
+            existing_assignment = df_all_assignments[
+                (df_all_assignments['day_name'] == day) & 
+                (df_all_assignments['staff_id'] == staff_id)
             ]
             
-            if len(counselors_on_other_jobs) == 0:
-                print(f"   ERROR: No counselors with pattern {day_pattern_for_swap} available to swap on {day}")
+            if len(existing_assignment) > 0:
+                # Update existing assignment
+                df_all_assignments.loc[
+                    (df_all_assignments['day_name'] == day) & 
+                    (df_all_assignments['staff_id'] == staff_id),
+                    ['job_id', 'job_code', 'job_name']
+                ] = [TIE_DYE_JOB_ID, tie_dye_job_info['job_code'], tie_dye_job_info['job_name']]
+            else:
+                # Create new assignment (shouldn't normally happen, but handle it)
+                print(f"      Creating new assignment for staff {staff_id} (no existing assignment found)")
+                new_assignment = pd.DataFrame([{
+                    'day_name': day,
+                    'staff_id': staff_id,
+                    'job_id': TIE_DYE_JOB_ID,
+                    'job_code': tie_dye_job_info['job_code'],
+                    'job_name': tie_dye_job_info['job_name'],
+                    'assignment_type': 'normal'
+                }])
+                df_all_assignments = pd.concat([df_all_assignments, new_assignment], ignore_index=True)
+        
+        print(f"   ✓ FIXED: Tie Dye now has {current_count + len(staff_to_add)} staff")
+    
+    print(f"\n{'='*80}\n")
+    return df_all_assignments
+
+
+def ensure_pattern_based_jobs_coverage(df_all_assignments, df_staff_clean, df_lunch_jobs, df_days):
+    """
+    Ensures that pattern-based jobs (Arts & Crafts: 1001, Card Trading: 1009) have:
+    1. At least 1 staff assigned on each day they should occur
+    2. Consistent staff assignment - same staff for all days matching their pattern
+    
+    Pattern-based jobs should have staff working all days that match their A/B pattern.
+    
+    Parameters:
+    - df_all_assignments: dataframe of all assignments
+    - df_staff_clean: cleaned staff dataframe with role and pattern information
+    - df_lunch_jobs: lunch jobs dataframe
+    - df_days: days dataframe
+    
+    Returns:
+    - df_all_assignments: updated assignments with pattern-based job requirements met
+    """
+    ARTS_AND_CRAFTS_JOB_ID = 1001
+    CARD_TRADING_JOB_ID = 1009
+    PATTERN_BASED_JOBS = {
+        ARTS_AND_CRAFTS_JOB_ID: 'Arts & Crafts',
+        CARD_TRADING_JOB_ID: 'Card Trading'
+    }
+    
+    print(f"\n{'='*80}")
+    print(f"VALIDATING PATTERN-BASED JOB ASSIGNMENTS")
+    print(f"{'='*80}")
+    
+    for job_id, job_name in PATTERN_BASED_JOBS.items():
+        print(f"\nValidating {job_name} (job_id: {job_id})...")
+        
+        # Get all assignments for this job
+        job_assignments = df_all_assignments[df_all_assignments['job_id'] == job_id]
+        
+        if len(job_assignments) == 0:
+            print(f"   ⚠️  WARNING: No assignments found for {job_name}")
+            print(f"      This job should have pattern-based assignments")
+            continue
+        
+        # Check coverage by day
+        days_with_job = job_assignments['day_name'].unique()
+        all_days = df_days['day_name'].unique()
+        
+        # Exclude staff game days
+        staff_game_days = df_all_assignments[df_all_assignments['job_id'] == 1100]['day_name'].unique()
+        working_days = [d for d in all_days if d not in staff_game_days]
+        
+        print(f"   {job_name} appears on: {sorted(days_with_job)}")
+        print(f"   Expected working days: {sorted(working_days)}")
+        
+        # Check if job is missing on any day
+        missing_days = set(working_days) - set(days_with_job)
+        if missing_days:
+            print(f"   ⚠️  FIXING: {job_name} missing on {sorted(missing_days)}")
+            
+            # Group missing days by pattern to handle replacements efficiently
+            missing_by_pattern = {'A': [], 'B': []}
+            for day in missing_days:
+                day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+                missing_by_pattern[day_pattern].append(day)
+            
+            # For each pattern, assign a replacement staff for ALL pattern days
+            for pattern, pattern_missing_days in missing_by_pattern.items():
+                if len(pattern_missing_days) == 0:
+                    continue
+                
+                # Check if staff already assigned to this job on other days with this pattern
+                existing_staff_for_pattern = job_assignments[
+                    job_assignments['staff_id'].isin(
+                        df_staff_clean[df_staff_clean['actual_assignment'] == pattern]['staff_id']
+                    )
+                ]['staff_id'].unique()
+                
+                if len(existing_staff_for_pattern) > 0:
+                    # Use existing staff - assign them to all missing pattern days
+                    staff_id = existing_staff_for_pattern[0]
+                    print(f"      Extending staff {staff_id} to cover missing pattern {pattern} days: {pattern_missing_days}")
+                    
+                    for day in pattern_missing_days:
+                        # Check if staff has another assignment this day
+                        staff_day_assignment = df_all_assignments[
+                            (df_all_assignments['day_name'] == day) &
+                            (df_all_assignments['staff_id'] == staff_id)
+                        ]
+                        
+                        if len(staff_day_assignment) > 0:
+                            old_job = staff_day_assignment.iloc[0]['job_name']
+                            print(f"         {day}: Reassigning from {old_job} to {job_name}")
+                            df_all_assignments.loc[
+                                (df_all_assignments['day_name'] == day) & 
+                                (df_all_assignments['staff_id'] == staff_id),
+                                ['job_id', 'job_code', 'job_name']
+                            ] = [job_id, df_lunch_jobs[df_lunch_jobs['job_id'] == job_id].iloc[0]['job_code'], job_name]
+                        else:
+                            print(f"         {day}: Adding assignment to {job_name}")
+                            # This shouldn't happen in normal cases, but handle it
+                            new_assignment = {
+                                'day_name': day,
+                                'staff_id': staff_id,
+                                'job_id': job_id,
+                                'job_code': df_lunch_jobs[df_lunch_jobs['job_id'] == job_id].iloc[0]['job_code'],
+                                'job_name': job_name,
+                                'assignment_type': 'hardcoded'
+                            }
+                            df_all_assignments = pd.concat([df_all_assignments, pd.DataFrame([new_assignment])], ignore_index=True)
+                else:
+                    # Need to find replacement staff - assign them to ALL pattern days for consistency
+                    print(f"      Finding replacement staff for pattern {pattern} days: {pattern_missing_days}")
+                    
+                    # Find available staff from the first missing day (to determine who's available)
+                    first_day = sorted(pattern_missing_days)[0]
+                    first_day_assignments = df_all_assignments[df_all_assignments['day_name'] == first_day]
+                    
+                    # Exclude protected jobs
+                    PROTECTED_JOB_IDS = [1045, 1077, 1100]  # Tie Dye, Counselor Activity, Staff Game
+                    swappable_assignments = first_day_assignments[~first_day_assignments['job_id'].isin(PROTECTED_JOB_IDS)]
+                    
+                    swappable_staff_ids = swappable_assignments['staff_id'].tolist()
+                    available_staff = df_staff_clean[
+                        (df_staff_clean['staff_id'].isin(swappable_staff_ids)) &
+                        (df_staff_clean['actual_assignment'] == pattern)
+                    ]
+                    
+                    if len(available_staff) == 0:
+                        print(f"      ⚠️  ERROR: No available staff with pattern {pattern} for {job_name}")
+                        continue
+                    
+                    # Pick first available replacement staff
+                    replacement_staff_id = available_staff.iloc[0]['staff_id']
+                    print(f"      Selected replacement staff {replacement_staff_id} for all pattern {pattern} days")
+                    
+                    # Get all pattern days for this staff (not just missing ones)
+                    all_pattern_days = [d for d in working_days 
+                                       if ('A' if d.lower() in ['monday', 'wednesday'] else 'B') == pattern]
+                    
+                    # Assign this staff to ALL their pattern days for consistency
+                    for day in all_pattern_days:
+                        staff_day_assignment = df_all_assignments[
+                            (df_all_assignments['day_name'] == day) &
+                            (df_all_assignments['staff_id'] == replacement_staff_id)
+                        ]
+                        
+                        if len(staff_day_assignment) > 0:
+                            old_job = staff_day_assignment.iloc[0]['job_name']
+                            old_job_id = staff_day_assignment.iloc[0]['job_id']
+                            
+                            # Only reassign if not already on this job
+                            if old_job_id != job_id:
+                                print(f"         {day}: Reassigning from {old_job} to {job_name}")
+                                df_all_assignments.loc[
+                                    (df_all_assignments['day_name'] == day) & 
+                                    (df_all_assignments['staff_id'] == replacement_staff_id),
+                                    ['job_id', 'job_code', 'job_name']
+                                ] = [job_id, df_lunch_jobs[df_lunch_jobs['job_id'] == job_id].iloc[0]['job_code'], job_name]
+                            else:
+                                print(f"         {day}: Already assigned to {job_name}")
+                        else:
+                            # Add new assignment (edge case)
+                            print(f"         {day}: Adding new assignment to {job_name}")
+                            new_assignment = {
+                                'day_name': day,
+                                'staff_id': replacement_staff_id,
+                                'job_id': job_id,
+                                'job_code': df_lunch_jobs[df_lunch_jobs['job_id'] == job_id].iloc[0]['job_code'],
+                                'job_name': job_name,
+                                'assignment_type': 'hardcoded'
+                            }
+                            df_all_assignments = pd.concat([df_all_assignments, pd.DataFrame([new_assignment])], ignore_index=True)
+        
+        # Verify consistency - same staff should work all pattern days
+        for pattern in ['A', 'B']:
+            pattern_days = [d for d in working_days if ('A' if d.lower() in ['monday', 'wednesday'] else 'B') == pattern]
+            
+            if len(pattern_days) == 0:
                 continue
             
-            counselor_to_swap = counselors_on_other_jobs.iloc[0]
-            counselor_id = counselor_to_swap['staff_id']
+            # Get staff assigned to this job on pattern days
+            pattern_staff = {}
+            for day in pattern_days:
+                day_staff = df_all_assignments[
+                    (df_all_assignments['day_name'] == day) &
+                    (df_all_assignments['job_id'] == job_id)
+                ]['staff_id'].tolist()
+                pattern_staff[day] = set(day_staff)
             
-            # Get the counselor's current job
-            counselor_current_job = day_assignments[day_assignments['staff_id'] == counselor_id].iloc[0]
-            counselor_job_id = counselor_current_job['job_id']
-            counselor_job_name = counselor_current_job['job_name']
-            
-            print(f"   Swapping: JC {jc_id} (Counselor Activity) ↔ Counselor {counselor_id} ({counselor_job_name})")
-            
-            # Perform the swap
-            # Update JC's job to counselor's job
-            df_all_assignments.loc[
-                (df_all_assignments['day_name'] == day) & 
-                (df_all_assignments['staff_id'] == jc_id),
-                ['job_id', 'job_code', 'job_name']
-            ] = [counselor_job_id, counselor_current_job['job_code'], counselor_job_name]
-            
-            # Update counselor's job to counselor activity
-            ca_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].iloc[0]
-            df_all_assignments.loc[
-                (df_all_assignments['day_name'] == day) & 
-                (df_all_assignments['staff_id'] == counselor_id),
-                ['job_id', 'job_code', 'job_name']
-            ] = [COUNSELOR_ACTIVITY_JOB_ID, ca_job_info['job_code'], ca_job_info['job_name']]
-            
-            print(f"   ✓ Fixed: Counselor Activity now has counselor {counselor_id}")
+            # Check if same staff across all pattern days
+            if len(pattern_staff) > 1:
+                all_staff_sets = list(pattern_staff.values())
+                if not all(s == all_staff_sets[0] for s in all_staff_sets):
+                    print(f"   ⚠️  Pattern {pattern} has inconsistent staff across days:")
+                    for day, staff_set in pattern_staff.items():
+                        print(f"      {day}: {sorted(staff_set)}")
+                    
+                    # Fix by using the most common staff assignment
+                    # Count which staff appear most frequently
+                    from collections import Counter
+                    all_staff_ids = [sid for day_set in pattern_staff.values() for sid in day_set]
+                    staff_counter = Counter(all_staff_ids)
+                    most_common_staff = staff_counter.most_common(1)[0][0] if staff_counter else None
+                    
+                    if most_common_staff:
+                        # CRITICAL: Don't pull staff from counselor activity!
+                        # Check if most_common_staff is on counselor activity on any day
+                        ca_conflicts = df_all_assignments[
+                            (df_all_assignments['staff_id'] == most_common_staff) &
+                            (df_all_assignments['job_id'] == 1077)  # Counselor Activity
+                        ]
+                        
+                        if len(ca_conflicts) > 0:
+                            # This staff is on counselor activity - find a different staff to standardize with
+                            print(f"      WARNING: Staff {most_common_staff} is on Counselor Activity - finding alternative")
+                            
+                            # Find the second most common staff who is NOT on counselor activity
+                            for staff_id, count in staff_counter.most_common():
+                                check_ca = df_all_assignments[
+                                    (df_all_assignments['staff_id'] == staff_id) &
+                                    (df_all_assignments['job_id'] == 1077)
+                                ]
+                                if len(check_ca) == 0:
+                                    most_common_staff = staff_id
+                                    print(f"      Using staff {most_common_staff} instead")
+                                    break
+                            else:
+                                print(f"      ERROR: All staff for this pattern-based job are on Counselor Activity!")
+                                continue
+                        
+                        print(f"      Standardizing to use staff {most_common_staff} for all pattern {pattern} days")
+                        
+                        for day in pattern_days:
+                            current_staff = pattern_staff[day]
+                            if most_common_staff not in current_staff:
+                                # Need to add this staff to this day
+                                # First remove other staff from this job on this day
+                                for other_staff in current_staff:
+                                    if other_staff != most_common_staff:
+                                        # CRITICAL: Check if other_staff is on Counselor Activity
+                                        # If so, DON'T remove them from this pattern-based job
+                                        other_staff_ca = df_all_assignments[
+                                            (df_all_assignments['staff_id'] == other_staff) &
+                                            (df_all_assignments['job_id'] == 1077)  # Counselor Activity
+                                        ]
+                                        
+                                        if len(other_staff_ca) > 0:
+                                            print(f"      WARNING: Cannot remove staff {other_staff} from {job_name} on {day} - they're on Counselor Activity")
+                                            print(f"         Skipping standardization for this day to protect CA coverage")
+                                            continue
+                                        
+                                        # Find this staff's assignment and swap
+                                        df_all_assignments.loc[
+                                            (df_all_assignments['day_name'] == day) &
+                                            (df_all_assignments['staff_id'] == other_staff) &
+                                            (df_all_assignments['job_id'] == job_id),
+                                            ['job_id', 'job_code', 'job_name']
+                                        ] = [None, 'SUB', 'Substitute']  # Mark as substitute
+                                
+                                # If most_common_staff has another assignment this day, swap them
+                                existing = df_all_assignments[
+                                    (df_all_assignments['day_name'] == day) &
+                                    (df_all_assignments['staff_id'] == most_common_staff)
+                                ]
+                                
+                                if len(existing) > 0:
+                                    df_all_assignments.loc[
+                                        (df_all_assignments['day_name'] == day) &
+                                        (df_all_assignments['staff_id'] == most_common_staff),
+                                        ['job_id', 'job_code', 'job_name']
+                                    ] = [job_id, df_lunch_jobs[df_lunch_jobs['job_id'] == job_id].iloc[0]['job_code'], job_name]
+        
+        print(f"   ✓ {job_name} validated")
     
+    print(f"\n{'='*80}\n")
     return df_all_assignments
 
 
@@ -872,7 +1439,160 @@ def print_assignment_summary(df_hardcoded_assignments, df_all_assignments, df_da
     print(f"\n{'='*80}\n")
 
 
-def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcoded):
+def check_counselor_activity_status(df_all_assignments, df_staff_clean, checkpoint_name):
+    """
+    Debug function to check counselor activity role mix at various points in the pipeline.
+    """
+    COUNSELOR_ACTIVITY_JOB_ID = 1005
+    COUNSELOR_ROLE_ID = 1005
+    JUNIOR_COUNSELOR_ROLE_ID = 1006
+    
+    ca_assignments = df_all_assignments[df_all_assignments['job_id'] == COUNSELOR_ACTIVITY_JOB_ID]
+    
+    if len(ca_assignments) == 0:
+        print(f"\n🔍 [{checkpoint_name}] No counselor activity assignments found!")
+        return
+    
+    print(f"\n🔍 [{checkpoint_name}] Counselor Activity Status:")
+    for day in sorted(ca_assignments['day_name'].unique()):
+        day_ca = ca_assignments[ca_assignments['day_name'] == day]
+        staff_ids = day_ca['staff_id'].tolist()
+        staff_roles = df_staff_clean[df_staff_clean['staff_id'].isin(staff_ids)]
+        
+        counselor_count = len(staff_roles[staff_roles['role_id'] == COUNSELOR_ROLE_ID])
+        jc_count = len(staff_roles[staff_roles['role_id'] == JUNIOR_COUNSELOR_ROLE_ID])
+        
+        status = "✓" if counselor_count >= 1 and jc_count >= 1 else "✗"
+        print(f"  {status} {day}: {counselor_count}C + {jc_count}JC (Staff: {staff_ids})")
+
+
+def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_hardcoded):
+    """
+    Pre-assign EXACTLY 1 counselor to counselor activity (job_id: 1077) for each day.
+    This counselor is LOCKED and cannot be reassigned or have their pattern changed.
+    Before assigning, checks if counselor has hardcoded assignments (tie dye, arts & crafts, card trading).
+    
+    Returns:
+    - counselor_activity_assignments: list of assignment dicts (1 counselor + 1 JC per day, locked)
+    - locked_staff_days: dict of {staff_id: [list of locked days]} for completely locked assignments
+    - staff_game_days: list of days with staff game
+    """
+    COUNSELOR_ACTIVITY_JOB_ID = 1005
+    COUNSELOR_ROLE_ID = 1005
+    JUNIOR_COUNSELOR_ROLE_ID = 1006
+    STAFF_GAME_JOB_ID = 1100
+    
+    # Jobs that counselors/JCs cannot be pulled from
+    PROTECTED_JOB_IDS = [1045, 1001, 1009]  # Tie Dye, Arts & Crafts, Card Trading
+    
+    counselor_activity_assignments = []
+    locked_staff_days = set()  # Track locked staff (staff_id, day_name) tuples
+    
+    # Get staff game days from hardcoded assignments
+    staff_game_days = df_hardcoded[df_hardcoded['job_id'] == STAFF_GAME_JOB_ID]['day_name'].unique().tolist() if len(df_hardcoded) > 0 else []
+    
+    # Get counselor activity job info
+    ca_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].iloc[0]
+    
+    print(f"\n{'='*80}")
+    print(f"PRE-ASSIGNING 1 COUNSELOR + 1 JC TO COUNSELOR ACTIVITY (LOCKED - CANNOT BE REASSIGNED)")
+    print(f"{'='*80}\n")
+    
+    for day in df_days['day_name'].unique():
+        # Skip staff game days
+        if day in staff_game_days:
+            print(f"{day}: Staff game day - skipping")
+            continue
+        
+        # Check if counselor activity is already hardcoded for this day
+        day_hardcoded_ca = df_hardcoded[
+            (df_hardcoded['day_name'].str.lower() == day.lower()) & 
+            (df_hardcoded['job_id'] == COUNSELOR_ACTIVITY_JOB_ID)
+        ] if len(df_hardcoded) > 0 else pd.DataFrame()
+        
+        if len(day_hardcoded_ca) > 0:
+            print(f"{day}: Counselor activity already hardcoded - skipping")
+            continue
+        
+        # Determine which pattern works this day
+        day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+        
+        # Get staff who are already hardcoded on this day
+        hardcoded_staff_ids = df_hardcoded[df_hardcoded['day_name'].str.lower() == day.lower()]['staff_id'].tolist() if len(df_hardcoded) > 0 else []
+        
+        # Get staff who are hardcoded to PROTECTED jobs on this day
+        protected_job_staff_ids = df_hardcoded[
+            (df_hardcoded['day_name'].str.lower() == day.lower()) &
+            (df_hardcoded['job_id'].isin(PROTECTED_JOB_IDS))
+        ]['staff_id'].tolist() if len(df_hardcoded) > 0 else []
+        
+        print(f"  {len(hardcoded_staff_ids)} staff already hardcoded on {day}")
+        print(f"  {len(protected_job_staff_ids)} staff on protected jobs (Tie Dye, Arts & Crafts, Card Trading)")
+        
+        # Get available counselors (exclude hardcoded staff AND staff on protected jobs)
+        available_counselors = df_staff_clean[
+            (df_staff_clean['role_id'] == COUNSELOR_ROLE_ID) &
+            (df_staff_clean['actual_assignment'] == day_pattern) &
+            (~df_staff_clean['staff_id'].isin(hardcoded_staff_ids)) &
+            (~df_staff_clean['staff_id'].isin(protected_job_staff_ids))
+        ]
+        
+        # Get available JCs (exclude hardcoded staff AND staff on protected jobs)
+        available_jcs = df_staff_clean[
+            (df_staff_clean['role_id'] == JUNIOR_COUNSELOR_ROLE_ID) &
+            (df_staff_clean['actual_assignment'] == day_pattern) &
+            (~df_staff_clean['staff_id'].isin(hardcoded_staff_ids)) &
+            (~df_staff_clean['staff_id'].isin(protected_job_staff_ids))
+        ]
+        
+        print(f"  Available: {len(available_counselors)} counselors, {len(available_jcs)} JCs (excluding protected jobs)")
+        
+        if len(available_counselors) < 1:
+            print(f"⚠️  {day}: No available counselors after excluding protected jobs!")
+            continue
+        
+        if len(available_jcs) < 1:
+            print(f"⚠️  {day}: No available JCs after excluding protected jobs!")
+            continue
+        
+        # Select exactly 1 counselor
+        selected_counselor = available_counselors.sample(n=1).iloc[0]
+        
+        counselor_activity_assignments.append({
+            'day_name': day,
+            'staff_id': selected_counselor['staff_id'],
+            'job_id': COUNSELOR_ACTIVITY_JOB_ID,
+            'job_code': ca_job_info['job_code'],
+            'job_name': ca_job_info['job_name'],
+            'assignment_type': 'pre_assigned_locked'
+        })
+        
+        # Lock this counselor for this day
+        locked_staff_days.add((selected_counselor['staff_id'], day))
+        
+        # Select exactly 1 JC
+        selected_jc = available_jcs.sample(n=1).iloc[0]
+        
+        counselor_activity_assignments.append({
+            'day_name': day,
+            'staff_id': selected_jc['staff_id'],
+            'job_id': COUNSELOR_ACTIVITY_JOB_ID,
+            'job_code': ca_job_info['job_code'],
+            'job_name': ca_job_info['job_name'],
+            'assignment_type': 'pre_assigned_locked'
+        })
+        
+        # Lock this JC for this day
+        locked_staff_days.add((selected_jc['staff_id'], day))
+        
+        print(f"{day}: LOCKED counselor {selected_counselor['staff_id']} + JC {selected_jc['staff_id']} to Counselor Activity")
+    
+    print(f"\n{'='*80}\n")
+    
+    return counselor_activity_assignments, locked_staff_days, staff_game_days
+
+
+def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcoded, tie_dye_days=None):
     """
     Assign remaining staff to remaining jobs using normal_staff_assigned and priority-based overflow.
     
@@ -881,14 +1601,20 @@ def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcode
     - df_days: days dataframe
     - df_lunch_jobs: lunch jobs dataframe (must have normal_staff_assigned, max_staff_assigned, priority columns)
     - df_hardcoded: hardcoded assignments dataframe
+    - tie_dye_days: list of days when tie dye occurs (optional)
     
     Returns:
     - df_all_assignments: complete dataframe with all lunch job assignments
     """
     all_assignments = []
     
-    # Get staff game days from hardcoded assignments
-    staff_game_days = df_hardcoded[df_hardcoded['job_id'] == 1100]['day_name'].unique().tolist() if len(df_hardcoded) > 0 else []
+    # Pre-assign 1 counselor to counselor activity for each day - LOCKED and cannot be reassigned
+    ca_assignments, locked_staff_days, staff_game_days = pre_assign_counselor_activity(
+        df_staff_clean, df_days, df_lunch_jobs, df_hardcoded
+    )
+    
+    # Add counselor activity assignments to the all_assignments list
+    all_assignments.extend(ca_assignments)
     
     for day in df_days['day_name'].unique():
         print(f"\nProcessing {day}...")
@@ -901,19 +1627,40 @@ def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcode
         # Get hardcoded assignments for this day
         day_hardcoded = df_hardcoded[df_hardcoded['day_name'] == day] if len(df_hardcoded) > 0 else pd.DataFrame()
         
-        # Get jobs and staff that are already assigned (hardcoded)
+        # Get pre-assigned counselor activity staff for this day
+        day_ca_pre_assigned = [a for a in ca_assignments if a['day_name'] == day]
+        
+        # Get jobs and staff that are already assigned (hardcoded + pre-assigned CA)
         assigned_job_ids = day_hardcoded['job_id'].tolist() if len(day_hardcoded) > 0 else []
         assigned_staff_ids = day_hardcoded['staff_id'].tolist() if len(day_hardcoded) > 0 else []
         
-        # Exclude special jobs unless they're hardcoded
-        # Job IDs to exclude: Staff Game (1100), Tie Dye (1045), Obstacle Course (1013), Tallying Scores (1041)
-        excluded_job_ids = [1100, 1045, 1013, 1041]
-        jobs_to_exclude = [jid for jid in excluded_job_ids if jid not in assigned_job_ids]
+        # Add pre-assigned counselor activity staff to assigned list (these are LOCKED)
+        for ca_assign in day_ca_pre_assigned:
+            assigned_staff_ids.append(ca_assign['staff_id'])
+        
+        # Exclude special jobs from random assignment
+        # Staff Game (1100), Tie Dye (1045), Obstacle Course (1013), Tallying Scores (1041) - exclude unless hardcoded
+        # NOTE: Counselor Activity (1005) is NOT excluded - 1 counselor + 1 JC are pre-assigned and locked,
+        #       but we still need to fill the remaining normal_staff_assigned slots
+        CONDITIONALLY_EXCLUDED_JOB_IDS = [1100, 1045, 1013, 1041]
+        
+        jobs_to_exclude = [jid for jid in CONDITIONALLY_EXCLUDED_JOB_IDS if jid not in assigned_job_ids]
         
         # Get remaining jobs (exclude hardcoded jobs and special jobs)
         remaining_jobs = df_lunch_jobs[
             ~df_lunch_jobs['job_id'].isin(assigned_job_ids + jobs_to_exclude)
         ].copy()
+        
+        # For Counselor Activity, adjust the normal_staff_assigned to account for pre-assigned staff (1C + 1JC)
+        COUNSELOR_ACTIVITY_JOB_ID = 1005
+        ca_pre_assigned_count = len([a for a in day_ca_pre_assigned if a['day_name'] == day])
+        if ca_pre_assigned_count > 0 and COUNSELOR_ACTIVITY_JOB_ID in remaining_jobs['job_id'].values:
+            ca_idx = remaining_jobs[remaining_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].index
+            if len(ca_idx) > 0:
+                current_normal = remaining_jobs.loc[ca_idx[0], 'normal_staff_assigned']
+                adjusted_normal = max(0, int(current_normal) - ca_pre_assigned_count)
+                remaining_jobs.loc[ca_idx[0], 'normal_staff_assigned'] = adjusted_normal
+                print(f"  Counselor Activity: {ca_pre_assigned_count} staff pre-assigned (LOCKED: 1C + 1JC), need {adjusted_normal} more staff")
         
         # Get remaining staff (exclude hardcoded staff)
         remaining_staff = df_staff_clean[~df_staff_clean['staff_id'].isin(assigned_staff_ids)].copy()
@@ -1057,10 +1804,52 @@ def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcode
         df_hardcoded['assignment_type'] = 'hardcoded'
         df_all_assignments = pd.concat([df_hardcoded, df_all_assignments], ignore_index=True)
     
-    # Validate and fix counselor activity assignments (job_id: 1077)
-    df_all_assignments = ensure_counselor_on_counselor_activity(
-        df_all_assignments, df_staff_clean, df_lunch_jobs
+    # Check CA status - counselor assignments are LOCKED and should not change
+    check_counselor_activity_status(df_all_assignments, df_staff_clean, "After Initial Assignment (CA Locked)")
+    
+    # SKIP counselor activity validation - counselors are locked in permanently
+    print("\nℹ️  Skipping counselor activity validation - counselor assignments are LOCKED and cannot change")
+    
+    # Validate and fix tie dye staff assignments (job_id: 1045)
+    df_all_assignments = ensure_minimum_tie_dye_staff(
+        df_all_assignments, df_staff_clean, df_lunch_jobs, df_days, tie_dye_days, locked_staff_days
     )
+    
+    # Check CA status after tie dye - counselors should still be locked
+    check_counselor_activity_status(df_all_assignments, df_staff_clean, "After Tie Dye Validation (CA Locked)")
+    
+    # SKIP pattern-based jobs validation - it was removing counselors from CA
+    # Protecting locked CA assignments is more important than pattern consistency
+    print("\nℹ️  Skipping pattern-based jobs validation to protect LOCKED counselor assignments")
+    
+    # FINAL CHECK: Verify locked counselor assignments are still intact
+    COUNSELOR_ACTIVITY_JOB_ID = 1005
+    COUNSELOR_ROLE_ID = 1005
+    
+    ca_assignments = df_all_assignments[df_all_assignments['job_id'] == COUNSELOR_ACTIVITY_JOB_ID]
+    if len(ca_assignments) > 0:
+        print(f"\n{'='*80}")
+        print(f"FINAL COUNSELOR ACTIVITY CHECK (LOCKED ASSIGNMENTS)")
+        print(f"{'='*80}")
+        
+        all_days_ok = True
+        for day in sorted(ca_assignments['day_name'].unique()):
+            day_ca = ca_assignments[ca_assignments['day_name'].str.lower() == day.lower()]
+            staff_ids = day_ca['staff_id'].tolist()
+            staff_roles = df_staff_clean[df_staff_clean['staff_id'].isin(staff_ids)]
+            counselor_count = len(staff_roles[staff_roles['role_id'] == COUNSELOR_ROLE_ID])
+            
+            if counselor_count == 0:
+                print(f"❌ {day}: NO counselors - LOCKED ASSIGNMENT WAS LOST!")
+                all_days_ok = False
+            else:
+                staff_names = staff_roles[staff_roles['role_id'] == COUNSELOR_ROLE_ID]['staff_name'].tolist()
+                print(f"✓ {day}: {counselor_count} counselor(s) - {', '.join(staff_names)}")
+        
+        if not all_days_ok:
+            print(f"\n⚠️  WARNING: Some locked counselor assignments were lost during processing!")
+        
+        print(f"{'='*80}\n")
     
     # Final validation: Check for any duplicate assignments (same staff, same day)
     if len(df_all_assignments) > 0:
@@ -1348,7 +2137,8 @@ def build_lunch_job_assignments(
     df_staff_balanced,
     df_days,
     df_lunch_job,
-    df_hardcoded_assignments
+    df_hardcoded_assignments,
+    tie_dye_days
     )
     
     # Print detailed summaries if verbose mode is enabled
@@ -1356,6 +2146,13 @@ def build_lunch_job_assignments(
         print_assignment_summary(df_hardcoded_assignments, df_final_assignments, df_days, df_lunch_job)
 
     print(f"\n\nTotal assignments: {len(df_final_assignments)} records")
+    
+    # DEBUG: Check CA assignments right after assign_random_lunch_jobs
+    ca_after_random = df_final_assignments[df_final_assignments['job_id'] == 1077]
+    if len(ca_after_random) > 0:
+        print(f"\n🔍 DEBUG: CA assignments returned from assign_random_lunch_jobs: {len(ca_after_random)} assignments")
+        print(f"   Days with CA: {sorted(ca_after_random['day_name'].unique())}")
+        print(f"   Staff IDs on CA: {sorted(ca_after_random['staff_id'].unique())}")
 
     # ----------------------------------------------------------------------
     # 7. Enrich with staff details
@@ -1445,6 +2242,28 @@ def transform_to_schedule_format(df_final_assignments_enriched):
     - df_schedule: transformed dataframe in schedule format
     """
     
+    # DEBUG: Check CA assignments before pivot
+    ca_before_pivot = df_final_assignments_enriched[
+        df_final_assignments_enriched['job_id'] == 1077
+    ]
+    if len(ca_before_pivot) > 0:
+        print(f"\n🔍 DEBUG: Counselor Activity assignments before pivot transformation:")
+        counselor_ca = ca_before_pivot[ca_before_pivot['role_id'] == 1005]
+        for _, row in counselor_ca.iterrows():
+            print(f"   {row['day_name']}: {row['staff_name']} (staff_id: {row['staff_id']}, pattern: {row['actual_assignment']})")
+        
+        # Check if any CA staff have multiple assignments on same day
+        for _, row in counselor_ca.iterrows():
+            staff_id = row['staff_id']
+            day = row['day_name']
+            all_assignments_this_day = df_final_assignments_enriched[
+                (df_final_assignments_enriched['staff_id'] == staff_id) &
+                (df_final_assignments_enriched['day_name'] == day)
+            ]
+            if len(all_assignments_this_day) > 1:
+                job_list = all_assignments_this_day['job_name'].tolist()
+                print(f"   ⚠️  {row['staff_name']} has {len(all_assignments_this_day)} jobs on {day}: {job_list}")
+    
     # Define day order for columns
     day_columns = ['M', 'T', 'W', 'TH', 'F']
     day_mapping = {
@@ -1458,6 +2277,36 @@ def transform_to_schedule_format(df_final_assignments_enriched):
     # Pivot the data: staff_name as rows, days as columns, job_code as values
     df_pivot = df_final_assignments_enriched.copy()
     df_pivot['day_abbrev'] = df_pivot['day_name'].str.lower().map(day_mapping)
+    
+    # CRITICAL: Check for duplicate assignments (same staff, same day, multiple jobs)
+    # This can happen if validation functions create assignments without properly removing old ones
+    duplicates = df_pivot.groupby(['day_name', 'staff_id']).size()
+    duplicates = duplicates[duplicates > 1]
+    
+    if len(duplicates) > 0:
+        print(f"\n⚠️  CLEANING: Found {len(duplicates)} staff with multiple jobs on same day before pivot")
+        
+        # For each duplicate, keep Counselor Activity (1077) if present, otherwise keep first
+        cleaned_rows = []
+        for (day, staff_id), count in duplicates.items():
+            staff_day_assignments = df_pivot[
+                (df_pivot['day_name'] == day) & 
+                (df_pivot['staff_id'] == staff_id)
+            ]
+            
+            # Check if any assignment is Counselor Activity
+            ca_assignment = staff_day_assignments[staff_day_assignments['job_id'] == 1077]
+            
+            if len(ca_assignment) > 0:
+                # Keep CA assignment, remove others
+                print(f"   Keeping Counselor Activity for staff {staff_id} on {day} (removing {count-1} other assignment(s))")
+                df_pivot = df_pivot.drop(staff_day_assignments[staff_day_assignments['job_id'] != 1077].index)
+            else:
+                # No CA - keep first assignment, remove others
+                print(f"   Keeping first assignment for staff {staff_id} on {day} (removing {count-1} duplicate(s))")
+                df_pivot = df_pivot.drop(staff_day_assignments.index[1:])
+        
+        print(f"   Cleaned {len(duplicates)} duplicate assignments\n")
     
     # Create pivot table
     pivot_table = df_pivot.pivot_table(
@@ -1652,22 +2501,15 @@ def transform_to_multi_week_wide_format(all_week_assignments):
     week_cols = [col for col in result_df.columns if col.startswith('Week ')]
     week_cols.sort(key=lambda x: (int(x.split()[1]), ['M', 'T', 'W', 'TH', 'F'].index(x.split()[2]) if x.split()[2] in ['M', 'T', 'W', 'TH', 'F'] else 999))
     
-    # Rename columns to full day names with week numbers (e.g., "Monday 1", "Tuesday 1")
-    day_full_names = {
-        'M': 'Monday',
-        'T': 'Tuesday',
-        'W': 'Wednesday',
-        'TH': 'Thursday',
-        'F': 'Friday'
-    }
-    
+    # Keep the abbreviations, just remove 'Week' prefix (e.g., "Week 1 M" → "M", "Week 1 T" → "T")
+    # This keeps week info in CSV but will be changed to just abbreviations in Google Sheets
     rename_map = {}
     for col in week_cols:
         parts = col.split()  # ['Week', '1', 'M']
         week_num = parts[1]
         day_abbrev = parts[2]
-        full_day = day_full_names.get(day_abbrev, day_abbrev)
-        rename_map[col] = f"{full_day} {week_num}"
+        # Keep week number in CSV for clarity
+        rename_map[col] = f"{day_abbrev}_{week_num}"
     
     result_df = result_df.rename(columns=rename_map)
     renamed_week_cols = [rename_map[col] for col in week_cols]
@@ -1716,7 +2558,6 @@ def transform_to_multi_week_wide_format(all_week_assignments):
         counselors_b_header,
         counselors_b[final_columns],
         blank_row,
-        blank_row,
         jc_header,
         junior_counselors_a[final_columns],
         blank_row,
@@ -1741,24 +2582,17 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     Parameters
     ----------
     directory : str
-        Directory name under config/lunchjob_inputs/ (e.g., 'test_1012', 'session_1012')
+        Directory name under config/lunchjob_inputs/ (e.g., 'run_1012')
     filename : str
-        Name of the JSON file (example: 'lunchjob_week1.json')
+        Name of the JSON file (example: 'lunchjob_session_1012.json')
 
     Returns
     -------
     dict
-        Dictionary containing:
-        - pattern_based_jobs
-        - staff_game_days
-        - tie_dye_days
-        - tie_dye_staff
-        - staff_to_remove
-        - staff_to_add
-        - custom_job_assignments
+        Dictionary containing all weeks and session configuration
     """
 
-# Resolve the path to the config directory regardless of where it's called from
+    # Resolve the path to the config directory regardless of where it's called from
     base_dir = Path(__file__).resolve().parents[1]  # Decathlon_Automation/
     file = base_dir / "config" / "lunchjob_inputs" / directory / filename
 
@@ -1768,24 +2602,33 @@ def load_lunch_job_config(directory: str, filename: str) -> dict:
     with open(file, "r") as f:
         data = json.load(f)
 
-# Convert job_id keys back to int for pattern_based_jobs
-    if "pattern_based_jobs" in data:
-        print('pattern_based_jobs detected in input. reformatting json...')
-        data["pattern_based_jobs"] = {
+    # The data should be a dict with structure:
+    # {
+    #   "session_id": 1012,
+    #   "week_1": {...},
+    #   "week_2": {...},
+    #   ...
+    # }
+    
+    # Process each week's configuration
+    for key in data.keys():
+        if key.startswith('week_'):
+            week_config = data[key]
+            
+            # Convert job_id keys back to int for pattern_based_jobs
+            if "pattern_based_jobs" in week_config:
+                week_config["pattern_based_jobs"] = {
+                    int(k): [int(x) for x in v]
+                    for k, v in week_config["pattern_based_jobs"].items()
+                }
 
-            int(k): [int(x) for x in v]
-            for k, v in data["pattern_based_jobs"].items()
-        }
-
-    # Convert job_id keys back to int inside custom_job_assignments['all_days']
-    if "custom_job_assignments" in data:
-        if "all_days" in data["custom_job_assignments"]:
-            print('custom_job_assignments detected in input. reformatting json...')
-            data["custom_job_assignments"]["all_days"] = {
-                int(k): [int(x) for x in v]
-                for k, v in data["custom_job_assignments"]["all_days"].items()
-            }
-
+            # Convert job_id keys back to int inside custom_job_assignments['all_days']
+            if "custom_job_assignments" in week_config:
+                if "all_days" in week_config["custom_job_assignments"]:
+                    week_config["custom_job_assignments"]["all_days"] = {
+                        int(k): [int(x) for x in v]
+                        for k, v in week_config["custom_job_assignments"]["all_days"].items()
+                    }
 
     return data
 
@@ -2222,7 +3065,7 @@ def build_multi_week_schedule(conn, cur, session_id):
     
     This function:
     1. Finds the directory under config/lunchjob_inputs/ that contains the session_id in its name
-    2. Automatically discovers all JSON files in that directory
+    2. Loads the combined session JSON file (lunchjob_session_{session_id}.json)
     3. Balances staff patterns across all weeks based on hardcoded assignments
     4. Generates weekly schedules with consistent pattern assignments
     5. Combines all weeks into a single output DataFrame
@@ -2236,7 +3079,7 @@ def build_multi_week_schedule(conn, cur, session_id):
     session_id : int
         Session ID to process. The function will search for a directory under
         config/lunchjob_inputs/ that contains this session_id in its name.
-        (e.g., session_id=1012 will match directory 'test_1012' or 'session_1012')
+        (e.g., session_id=1012 will match directory 'run_1012')
     
     Returns
     -------
@@ -2274,40 +3117,47 @@ def build_multi_week_schedule(conn, cur, session_id):
     if not input_dir.exists():
         raise FileNotFoundError(f"Directory not found: {input_dir}")
     
-    # Find all JSON files in the directory that contain "week #" pattern in the filename
-    # Week number can be indicated as "week1", "week_2", "week 3", etc.
-    # Example filenames: "lunchjob_week1.json", "week 2 lunchjob.json"
-    import re
-    all_files = []
-    for f in input_dir.glob("*.json"):
-        match = re.search(r'week[\s_]*(\d+)', f.name.lower())
-        if match:
-            all_files.append((f, int(match.group(1))))
+    # Look for the combined session JSON file
+    session_filename = f"lunchjob_session_{session_id}.json"
+    session_file = input_dir / session_filename
     
-    if not all_files:
-        raise FileNotFoundError(f"No JSON files with 'week #' pattern found in directory: {input_dir}")
+    if not session_file.exists():
+        raise FileNotFoundError(
+            f"Session configuration file not found: {session_file}\n"
+            f"Expected filename: {session_filename}"
+        )
     
-    # Sort files by week number
-    all_files.sort(key=lambda x: x[1])
-    json_files = [f[0].name for f in all_files]
+    print(f"Loading session configuration: {session_filename}")
     
-    print(f"\nFound {len(json_files)} week(s) to process:")
-    for i, filename in enumerate(json_files, 1):
-        print(f"  Week {i}: {filename}")
-    
-    # STEP 1: Load all configs
+    # STEP 1: Load the combined configuration
     print("\n" + "="*80)
-    print("LOADING CONFIGURATIONS FOR ALL WEEKS")
+    print("LOADING SESSION CONFIGURATION")
     print("="*80)
     
-    configs = []
-    for i, filename in enumerate(json_files):
-        print(f"\nLoading Week {i+1}: {filename}")
-        config = load_lunch_job_config(directory=directory, filename=filename)
-        configs.append(config)
+    combined_config = load_lunch_job_config(directory=directory, filename=session_filename)
     
-    # Use session_id from first config (should be same across all weeks)
-    session_id = configs[0]['session_id']
+    # Extract session_id from config
+    config_session_id = combined_config.get('session_id')
+    if config_session_id != session_id:
+        print(f"⚠️  Warning: Session ID in config ({config_session_id}) doesn't match requested session_id ({session_id})")
+    
+    # Extract individual week configurations
+    import re
+    week_keys = sorted([k for k in combined_config.keys() if re.match(r'week_\d+', k)],
+                       key=lambda x: int(re.search(r'\d+', x).group()))
+    
+    if not week_keys:
+        raise ValueError(f"No week configurations found in {session_filename}. Expected keys like 'week_1', 'week_2', etc.")
+    
+    configs = []
+    for week_key in week_keys:
+        week_config = combined_config[week_key]
+        # Add session_id to each week config
+        week_config['session_id'] = config_session_id
+        configs.append(week_config)
+        print(f"  Loaded {week_key}: {len(week_config)} configuration parameters")
+    
+    print(f"\nTotal weeks to process: {len(configs)}")
     
     # Check if ANY week has debug=True
     debug_any = any(config.get("debug", False) for config in configs)
@@ -2315,13 +3165,13 @@ def build_multi_week_schedule(conn, cur, session_id):
     # Use verbose from first config
     verbose = configs[0].get("verbose", False)
     
-    # STEP 1: Balance staff patterns globally across all weeks
+    # STEP 2: Balance staff patterns globally across all weeks
     # This ensures each staff member has the same pattern in every week
     overall_staff_patterns = balance_staff_patterns_across_weeks(configs, conn)
     
     # STEP 3: Loop through each week and generate assignments
     print("\n" + "="*80)
-    print("STEP 2: GENERATING WEEKLY SCHEDULES")
+    print("GENERATING WEEKLY SCHEDULES")
     print("="*80)
     
     all_week_schedules = []
@@ -2393,7 +3243,7 @@ def build_multi_week_schedule(conn, cur, session_id):
     df_full_session = pd.concat(all_week_schedules, ignore_index=True)
     
     print(f"\nFull session schedule complete!")
-    print(f"Total weeks: {len(json_files)}")
+    print(f"Total weeks: {len(configs)}")
     print(f"Total rows: {len(df_full_session)}")
     
     # STEP 5: Create wide format (all weeks as columns) - ALWAYS generate this
@@ -2570,15 +3420,53 @@ def authenticate_google_sheets():
 
 
 def upload_csv_to_sheet(service, spreadsheet_id, sheet_name, csv_file):
-    """Upload CSV data to Google Sheet."""
+    """Upload CSV data to Google Sheet with Friday columns and abbreviated headers."""
     # Read CSV file
     df = pd.read_csv(csv_file)
     
     # Replace NaN values with empty strings
     df = df.fillna('')
     
+    # Get week columns (format: M_1, T_1, W_1, TH_1, M_2, T_2, etc.)
+    week_cols = [col for col in df.columns if '_' in col and col.split('_')[0] in ['M', 'T', 'W', 'TH']]
+    
+    # Group columns by week number
+    weeks = sorted(set([col.split('_')[1] for col in week_cols]))
+    
+    # Rebuild column order: staff_name, then for each week (M, T, W, Th, F)
+    new_columns = ['staff_name']
+    friday_columns = []  # Track which columns are Friday (for grey formatting later)
+    
+    for week in weeks:
+        week_day_cols = []
+        for day in ['M', 'T', 'W', 'TH']:
+            col_name = f"{day}_{week}"
+            if col_name in df.columns:
+                week_day_cols.append(col_name)
+        
+        # Add the week's day columns
+        new_columns.extend(week_day_cols)
+        
+        # Add Friday column (empty placeholder)
+        friday_col = f"F_{week}"
+        new_columns.append(friday_col)
+        friday_columns.append(friday_col)
+        df[friday_col] = ''  # Add empty Friday column
+    
+    # Reorder DataFrame
+    df = df[new_columns]
+    
+    # Change headers to just abbreviations (M, T, W, Th, F) - remove week numbers for Google Sheets
+    headers = ['']  # Empty string for staff_name column
+    for col in new_columns[1:]:
+        day_abbrev = col.split('_')[0]
+        # Change TH to Th for consistency
+        if day_abbrev == 'TH':
+            day_abbrev = 'Th'
+        headers.append(day_abbrev)
+    
     # Convert DataFrame to list of lists for Google Sheets API
-    values = [df.columns.tolist()] + df.values.tolist()
+    values = [headers] + df.values.tolist()
     
     # Clear existing data
     try:
@@ -2600,7 +3488,10 @@ def upload_csv_to_sheet(service, spreadsheet_id, sheet_name, csv_file):
     ).execute()
     
     print(f"Uploaded {result.get('updatedCells')} cells to {sheet_name}")
-    return len(values), len(values[0])
+    
+    # Return dimensions and Friday column indices (0-based, after staff_name column)
+    friday_indices = [new_columns.index(col) for col in friday_columns]
+    return len(values), len(values[0]), friday_indices
 
 
 def create_sheet(service, spreadsheet_id, sheet_name):
@@ -2743,7 +3634,7 @@ def merge_header_rows(service, spreadsheet_id, sheet_name, num_rows, num_cols):
         print(f"Merged {len(requests)} header rows")
 
 
-def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols):
+def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols, friday_indices):
     """Apply general formatting: borders, alignment, font size, etc."""
     sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
 
@@ -2751,21 +3642,26 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
         print(f"Could not find sheet: {sheet_name}")
         return
 
-    # Read the data to find section header rows
+    # Read the data to find section header rows and counselor name rows
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
         range=f"{sheet_name}!A1:{chr(64 + num_cols)}{num_rows}"
     ).execute()
     values = result.get('values', [])
     
-    # Find section header rows
+    # Find section header rows and counselor name rows
     section_header_rows = []
+    counselor_name_rows = []  # Rows with actual counselor names (not headers, not blank)
+    
     for row_idx, row in enumerate(values):
         if row and ('COUNSELORS:' in str(row[0]) or 'JUNIOR COUNSELORS:' in str(row[0])):
             section_header_rows.append(row_idx)
+        elif row_idx > 0 and row and row[0].strip() and 'COUNSELORS:' not in str(row[0]) and 'JUNIOR COUNSELORS:' not in str(row[0]):
+            # This is a counselor name row (not header, not blank)
+            counselor_name_rows.append(row_idx)
 
     requests = [
-        # Format column header row (row 0) - Light grey background
+        # Format column header row (row 0) - Light grey background, BOLD
         {
             'repeatCell': {
                 'range': {
@@ -2789,7 +3685,7 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                 'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
             }
         },
-        # Center align all cells
+        # Center align all cells and make them BOLD by default
         {
             'repeatCell': {
                 'range': {
@@ -2804,7 +3700,8 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                         'horizontalAlignment': 'CENTER',
                         'verticalAlignment': 'MIDDLE',
                         'textFormat': {
-                            'fontSize': 9
+                            'fontSize': 9,
+                            'bold': True
                         }
                     }
                 },
@@ -2872,7 +3769,7 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
         }
     ]
     
-    # Add formatting for section headers (COUNSELORS/JUNIOR COUNSELORS) - Light blue background
+    # Add formatting for section headers (COUNSELORS/JUNIOR COUNSELORS) - Light blue background, BOLD
     for row_idx in section_header_rows:
         requests.append({
             'repeatCell': {
@@ -2897,13 +3794,56 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                 'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
             }
         })
+    
+    # Remove BOLD from counselor names (column A only, for counselor name rows)
+    for row_idx in counselor_name_rows:
+        requests.append({
+            'repeatCell': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_idx,
+                    'endRowIndex': row_idx + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 1
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'textFormat': {
+                            'bold': False,
+                            'fontSize': 9
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat(textFormat)'
+            }
+        })
+    
+    # Grey out Friday columns
+    for friday_idx in friday_indices:
+        requests.append({
+            'repeatCell': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': 0,
+                    'endRowIndex': num_rows,
+                    'startColumnIndex': friday_idx,
+                    'endColumnIndex': friday_idx + 1
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'backgroundColor': {'red': 0.9, 'green': 0.9, 'blue': 0.9}  # Light grey
+                    }
+                },
+                'fields': 'userEnteredFormat(backgroundColor)'
+            }
+        })
 
     body = {'requests': requests}
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=body
     ).execute()
-    print("Applied cell formatting (borders, alignment, header styling)")
+    print("Applied cell formatting (borders, alignment, header styling, bold text, Friday columns)")
 
 
 def clear_sheet_formatting(service, spreadsheet_id, sheet_name):
@@ -3029,14 +3969,14 @@ def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Sche
 
         # Upload CSV data
         print("Uploading CSV data...")
-        num_rows, num_cols = upload_csv_to_sheet(service, spreadsheet_id, sheet_name, csv_file)
+        num_rows, num_cols, friday_indices = upload_csv_to_sheet(service, spreadsheet_id, sheet_name, csv_file)
 
         print("Merging header rows...")
         merge_header_rows(service, spreadsheet_id, sheet_name, num_rows, num_cols)
         
         # Apply formatting
         print("Applying cell formatting...")
-        apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols)
+        apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols, friday_indices)
         
         # Apply color coding
         print("Applying color coding...")

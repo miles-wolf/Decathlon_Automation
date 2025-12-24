@@ -1,0 +1,110 @@
+{
+  "session_id": 1012,
+  "week_1": {
+    "session_id": 1012,
+    "pattern_based_jobs": {},
+    "staff_game_days": [],
+    "tie_dye_days": [],
+    "tie_dye_staff": [],
+    "staff_to_remove": [],
+    "staff_to_add": [],
+    "custom_job_assignments": {
+      "all_days": {
+        "1001": [
+          1033,
+          1143
+        ],
+        "1009": [
+          1029
+        ]
+      },
+      "specific_days": []
+    },
+    "debug": false,
+    "verbose": false
+  },
+  "week_2": {
+    "session_id": 1012,
+    "pattern_based_jobs": {},
+    "staff_game_days": [],
+    "tie_dye_days": [],
+    "tie_dye_staff": [],
+    "staff_to_remove": [],
+    "staff_to_add": [],
+    "custom_job_assignments": {
+      "all_days": {
+        "1001": [
+          1033,
+          1143
+        ],
+        "1009": [
+          1029,
+          1021
+        ]
+      },
+      "specific_days": []
+    },
+    "debug": false,
+    "verbose": false
+  },
+  "week_3": {
+    "session_id": 1012,
+    "pattern_based_jobs": {},
+    "staff_game_days": [],
+    "tie_dye_days": [
+      "tuesday",
+      "wednesday"
+    ],
+    "tie_dye_staff": [
+      1001,
+      1145,
+      1165,
+      1139,
+      1067,
+      1125
+    ],
+    "staff_to_remove": [],
+    "staff_to_add": [],
+    "custom_job_assignments": {
+      "all_days": {
+        "1001": [
+          1033,
+          1143
+        ],
+        "1009": [
+          1029,
+          1021
+        ]
+      },
+      "specific_days": []
+    },
+    "debug": false,
+    "verbose": false
+  },
+  "week_4": {
+    "session_id": 1012,
+    "pattern_based_jobs": {},
+    "staff_game_days": [
+      "wednesday"
+    ],
+    "tie_dye_days": [],
+    "tie_dye_staff": [],
+    "staff_to_remove": [],
+    "staff_to_add": [],
+    "custom_job_assignments": {
+      "all_days": {
+        "1001": [
+          1033,
+          1143
+        ],
+        "1009": [
+          1029,
+          1021
+        ]
+      },
+      "specific_days": []
+    },
+    "debug": false,
+    "verbose": false
+  }
+}

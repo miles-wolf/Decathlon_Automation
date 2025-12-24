@@ -438,15 +438,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fs.mkdirSync(runDir, { recursive: true });
       }
       
-      // Write each week's config to a separate JSON file
+      // Create combined session JSON file with all weeks
+      // Format: { session_id: number, week_1: {...}, week_2: {...}, ... }
+      const combinedConfig: Record<string, any> = {
+        session_id: parseInt(sessionId, 10)
+      };
+      
       if (weekConfigs && Array.isArray(weekConfigs) && weekConfigs.length > 0) {
-        console.log(`Writing ${weekConfigs.length} week config(s) to ${runDir}...`);
+        console.log(`Creating combined session config with ${weekConfigs.length} week(s)...`);
         
         for (let i = 0; i < weekConfigs.length; i++) {
           const weekNum = i + 1;
-          const configPath = pathModule.join(runDir, `lunchjob_week_${weekNum}.json`);
-          fs.writeFileSync(configPath, JSON.stringify(weekConfigs[i], null, 2));
-          console.log(`  Written: lunchjob_week_${weekNum}.json`);
+          combinedConfig[`week_${weekNum}`] = weekConfigs[i];
+          console.log(`  Added: week_${weekNum}`);
         }
       } else {
         // Default to week 1 config if no weekConfigs provided
@@ -464,10 +468,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           debug: false,
           verbose: false
         };
-        const configPath = pathModule.join(runDir, `lunchjob_week_1.json`);
-        fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
-        console.log(`  Written default: lunchjob_week_1.json`);
+        combinedConfig["week_1"] = defaultConfig;
+        console.log(`  Added default: week_1`);
       }
+      
+      // Write the combined session file
+      const sessionFilename = `lunchjob_session_${sessionId}.json`;
+      const configPath = pathModule.join(runDir, sessionFilename);
+      fs.writeFileSync(configPath, JSON.stringify(combinedConfig, null, 2));
+      console.log(`Written combined session config: ${sessionFilename}`);
 
       // Prepare environment variables for the Python script
       // The pipeline uses SUPABASE_DB_* credentials (already in process.env)

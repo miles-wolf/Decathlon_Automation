@@ -38,6 +38,15 @@ def run_lunchjob_pipeline(session_id: int):
         creds['host'], creds['port']
     )
     
+    # Check if connection was successful
+    if conn is None or cur is None:
+        raise ConnectionError(
+            "Failed to connect to the database. Please check:\n"
+            "1. Database credentials are correct\n"
+            "2. Database server is running and accessible\n"
+            "3. Network connection is working"
+        )
+    
     # Generate multi-week schedule
     output = ljh.build_multi_week_schedule(
         conn, cur, 
@@ -61,7 +70,8 @@ def run_lunchjob_pipeline(session_id: int):
     ljh.export_and_upload_schedule(
         df_full_session=df_full_session,
         df_wide_format=df_wide_format,
-        sheet_name='Lunchtime Job Schedule'
+        sheet_name='Lunchtime Job Schedule',
+        session_id=session_id
     )
     
     # Show debug info if available

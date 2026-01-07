@@ -1437,7 +1437,7 @@ export default function LunchtimeJobs() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <Button onClick={handleAddSessionCustomAssignment} data-testid="button-add-custom-assign">
+                          <Button variant="outline" onClick={handleAddSessionCustomAssignment} data-testid="button-add-custom-assign" className="border-primary text-primary hover:bg-primary/10">
                             <Plus className="h-4 w-4 mr-1" />
                             Add
                           </Button>
@@ -1562,7 +1562,7 @@ export default function LunchtimeJobs() {
                                 ))}
                               </SelectContent>
                             </Select>
-                            <Button onClick={handleAddSessionCustomStaff} data-testid="button-session-add-custom-staff">
+                            <Button variant="outline" onClick={handleAddSessionCustomStaff} data-testid="button-session-add-custom-staff" className="border-primary text-primary hover:bg-primary/10">
                               <Plus className="h-4 w-4 mr-1" />
                               Add
                             </Button>
@@ -1857,7 +1857,7 @@ export default function LunchtimeJobs() {
                                 ))}
                               </SelectContent>
                             </Select>
-                            <Button onClick={handleAddWeekCustomAssignment} data-testid={`button-week-${config.weekNumber}-add-custom`}>
+                            <Button variant="outline" onClick={handleAddWeekCustomAssignment} data-testid={`button-week-${config.weekNumber}-add-custom`} className="border-primary text-primary hover:bg-primary/10">
                               <Plus className="h-4 w-4 mr-1" />
                               Add
                             </Button>
@@ -1995,7 +1995,7 @@ export default function LunchtimeJobs() {
                                   ))}
                                 </SelectContent>
                               </Select>
-                              <Button onClick={handleAddCustomStaff} data-testid={`button-week-${config.weekNumber}-add-custom-staff`}>
+                              <Button variant="outline" onClick={handleAddCustomStaff} data-testid={`button-week-${config.weekNumber}-add-custom-staff`} className="border-primary text-primary hover:bg-primary/10">
                                 <Plus className="h-4 w-4 mr-1" />
                                 Add
                               </Button>

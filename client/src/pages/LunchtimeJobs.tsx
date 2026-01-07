@@ -1251,7 +1251,7 @@ export default function LunchtimeJobs() {
               </CardHeader>
               <CardContent>
                 <Tabs value={configTab} onValueChange={handleConfigTabChange}>
-                  <TabsList className="mb-4 flex-wrap">
+                  <TabsList className="mb-4 flex-nowrap overflow-x-auto max-w-full">
                     <TabsTrigger value="full-session" data-testid="tab-full-session">
                       <Calendar className="h-4 w-4 mr-2" />
                       Full Session

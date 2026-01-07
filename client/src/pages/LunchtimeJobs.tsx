@@ -1274,7 +1274,7 @@ export default function LunchtimeJobs() {
                       <Settings className="h-5 w-5" />
                       Configuration
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="mt-2">
                       Set session-wide defaults or customize individual weeks
                     </CardDescription>
                   </div>
@@ -1345,9 +1345,6 @@ export default function LunchtimeJobs() {
                           )}
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        Settings configured here apply to all weeks by default. You can override these settings for specific weeks using the week tabs above.
-                      </p>
                     </div>
 
                     {/* Hardcoded Assignments Section - Collapsible */}

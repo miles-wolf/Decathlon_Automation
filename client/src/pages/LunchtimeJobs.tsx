@@ -912,9 +912,17 @@ export default function LunchtimeJobs() {
     });
 
     // Find staff with multiple assignments
+    // Exception: Arts & Crafts + Tie Dye is allowed since A&C staff typically do tie dye
     allStaffAssignments.forEach((sections, staffId) => {
       if (sections.length > 1) {
-        duplicates.push({ staffId, sections });
+        // Check if it's only Arts & Crafts and Tie Dye - this is allowed
+        const isArtsAndTieDyeOnly = sections.length === 2 && 
+          sections.includes("Arts & Crafts") && 
+          sections.includes("Tie Dye");
+        
+        if (!isArtsAndTieDyeOnly) {
+          duplicates.push({ staffId, sections });
+        }
       }
     });
 

@@ -8,7 +8,7 @@ export function Hero() {
               Simple tools for running camp with ease
             </h1>
             <p className="mt-5 max-w-2xl text-muted-foreground">
-              Focus less on paperwork and more on having fun in the sun with the kids.
+              Focus less on paperwork and more on having fun in the sun with the kids
             </p>
           </div>
         </div>

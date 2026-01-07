@@ -135,7 +135,7 @@ export default function LunchtimeJobs() {
   const [outputTab, setOutputTab] = useState<string>("summary");
   const [hardcodedOpen, setHardcodedOpen] = useState(true);
   const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
-  const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(true);
+  const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [numberOfWeeks, setNumberOfWeeks] = useState(1);
   const [customWeekInput, setCustomWeekInput] = useState("");

@@ -1896,6 +1896,7 @@ export default function LunchtimeJobs() {
                       {/* Collapsible Advanced Options */}
                       <div className="space-y-3 pt-4 border-t">
                         <p className="text-sm font-medium text-muted-foreground">Advanced Options</p>
+                        <p className="text-sm text-muted-foreground">Use these options to specify staff who are working partial sessions</p>
                         
                         {/* Staff to Exclude - Collapsible */}
                         <Collapsible>

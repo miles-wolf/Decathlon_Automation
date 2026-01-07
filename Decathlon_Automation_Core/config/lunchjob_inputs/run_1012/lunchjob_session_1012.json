@@ -6,16 +6,19 @@
     "staff_game_days": [],
     "tie_dye_days": [],
     "tie_dye_staff": [],
-    "staff_to_remove": [],
+    "staff_to_remove": [
+      1067
+    ],
     "staff_to_add": [],
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1087,
+          1071
         ],
         "1009": [
-          1029
+          1063,
+          1125
         ]
       },
       "specific_days": []
@@ -26,20 +29,24 @@
   "week_2": {
     "session_id": 1012,
     "pattern_based_jobs": {},
-    "staff_game_days": [],
+    "staff_game_days": [
+      "tuesday"
+    ],
     "tie_dye_days": [],
     "tie_dye_staff": [],
-    "staff_to_remove": [],
+    "staff_to_remove": [
+      1067
+    ],
     "staff_to_add": [],
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1087,
+          1071
         ],
         "1009": [
-          1029,
-          1021
+          1063,
+          1125
         ]
       },
       "specific_days": []
@@ -56,24 +63,24 @@
       "wednesday"
     ],
     "tie_dye_staff": [
+      1143,
+      1033,
+      1091,
+      1017,
       1001,
-      1145,
-      1165,
-      1139,
-      1067,
-      1125
+      1173
     ],
     "staff_to_remove": [],
     "staff_to_add": [],
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1087,
+          1071
         ],
         "1009": [
-          1029,
-          1021
+          1063,
+          1125
         ]
       },
       "specific_days": []
@@ -85,7 +92,7 @@
     "session_id": 1012,
     "pattern_based_jobs": {},
     "staff_game_days": [
-      "wednesday"
+      "thursday"
     ],
     "tie_dye_days": [],
     "tie_dye_staff": [],
@@ -94,12 +101,12 @@
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1087,
+          1071
         ],
         "1009": [
-          1029,
-          1021
+          1063,
+          1125
         ]
       },
       "specific_days": []

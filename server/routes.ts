@@ -1025,6 +1025,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========== External Database (Supabase) Endpoints ==========
   
+  // Simple in-memory cache for external database queries
+  const externalDbCache: Record<string, { data: any; timestamp: number }> = {};
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  
+  function getCachedData(key: string): any | null {
+    const cached = externalDbCache[key];
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+    return null;
+  }
+  
+  function setCachedData(key: string, data: any): void {
+    externalDbCache[key] = { data, timestamp: Date.now() };
+  }
+  
+  function clearCache(key?: string): void {
+    if (key) {
+      delete externalDbCache[key];
+    } else {
+      // Clear all cache entries
+      Object.keys(externalDbCache).forEach(k => delete externalDbCache[k]);
+    }
+  }
+  
   // Helper function to execute Python script and get JSON result
   async function executePythonScript(args: string[]): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -1071,10 +1096,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  // Get available sessions from external database
+  // Get available sessions from external database (cached)
   app.get("/api/external-db/sessions", async (_req, res) => {
     try {
+      const cacheKey = "sessions";
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        console.log("Returning cached sessions");
+        return res.json(cached);
+      }
+      
       const sessions = await executePythonScript(["sessions"]);
+      setCachedData(cacheKey, sessions);
       res.json(sessions);
     } catch (error: any) {
       console.error("Error fetching external sessions:", error);
@@ -1082,11 +1115,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get eligible staff for a session from external database
+  // Get eligible staff for a session from external database (cached per session)
   app.get("/api/external-db/eligible-staff/:sessionId", async (req, res) => {
     try {
       const { sessionId } = req.params;
+      const cacheKey = `eligible-staff-${sessionId}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        console.log(`Returning cached eligible staff for session ${sessionId}`);
+        return res.json(cached);
+      }
+      
       const staff = await executePythonScript(["eligible-staff", "--session-id", sessionId]);
+      setCachedData(cacheKey, staff);
       res.json(staff);
     } catch (error: any) {
       console.error("Error fetching eligible staff:", error);
@@ -1110,10 +1151,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get lunch jobs from external database
+  // Get lunch jobs from external database (cached)
   app.get("/api/external-db/lunch-jobs", async (_req, res) => {
     try {
+      const cacheKey = "lunch-jobs";
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        console.log("Returning cached lunch jobs");
+        return res.json(cached);
+      }
+      
       const jobs = await executePythonScript(["lunch-jobs"]);
+      setCachedData(cacheKey, jobs);
       res.json(jobs);
     } catch (error: any) {
       console.error("Error fetching lunch jobs:", error);
@@ -1121,15 +1170,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get AM/PM jobs from external database
+  // Get AM/PM jobs from external database (cached)
   app.get("/api/external-db/ampm-jobs", async (_req, res) => {
     try {
+      const cacheKey = "ampm-jobs";
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        console.log("Returning cached AM/PM jobs");
+        return res.json(cached);
+      }
+      
       const jobs = await executePythonScript(["ampm-jobs"]);
+      setCachedData(cacheKey, jobs);
       res.json(jobs);
     } catch (error: any) {
       console.error("Error fetching AM/PM jobs:", error);
       res.status(500).json({ error: error.message || "Failed to fetch AM/PM jobs" });
     }
+  });
+  
+  // Warm up cache - pre-fetches all commonly used data
+  app.post("/api/external-db/warm-cache", async (_req, res) => {
+    console.log("Starting cache warm-up...");
+    const results: Record<string, string> = {};
+    
+    try {
+      // Fetch sessions
+      if (!getCachedData("sessions")) {
+        const sessions = await executePythonScript(["sessions"]);
+        setCachedData("sessions", sessions);
+        results.sessions = "fetched";
+      } else {
+        results.sessions = "cached";
+      }
+    } catch (error: any) {
+      results.sessions = `error: ${error.message}`;
+    }
+    
+    try {
+      // Fetch lunch jobs
+      if (!getCachedData("lunch-jobs")) {
+        const lunchJobs = await executePythonScript(["lunch-jobs"]);
+        setCachedData("lunch-jobs", lunchJobs);
+        results.lunchJobs = "fetched";
+      } else {
+        results.lunchJobs = "cached";
+      }
+    } catch (error: any) {
+      results.lunchJobs = `error: ${error.message}`;
+    }
+    
+    try {
+      // Fetch AM/PM jobs
+      if (!getCachedData("ampm-jobs")) {
+        const ampmJobs = await executePythonScript(["ampm-jobs"]);
+        setCachedData("ampm-jobs", ampmJobs);
+        results.ampmJobs = "fetched";
+      } else {
+        results.ampmJobs = "cached";
+      }
+    } catch (error: any) {
+      results.ampmJobs = `error: ${error.message}`;
+    }
+    
+    console.log("Cache warm-up complete:", results);
+    res.json({ success: true, results });
+  });
+  
+  // Clear cache and optionally re-fetch
+  app.post("/api/external-db/refresh-cache", async (req, res) => {
+    const { refetch = true } = req.body || {};
+    
+    console.log("Clearing external database cache...");
+    clearCache();
+    
+    if (refetch) {
+      // Trigger warm-up after clearing
+      const results: Record<string, string> = {};
+      
+      try {
+        const sessions = await executePythonScript(["sessions"]);
+        setCachedData("sessions", sessions);
+        results.sessions = "refreshed";
+      } catch (error: any) {
+        results.sessions = `error: ${error.message}`;
+      }
+      
+      try {
+        const lunchJobs = await executePythonScript(["lunch-jobs"]);
+        setCachedData("lunch-jobs", lunchJobs);
+        results.lunchJobs = "refreshed";
+      } catch (error: any) {
+        results.lunchJobs = `error: ${error.message}`;
+      }
+      
+      try {
+        const ampmJobs = await executePythonScript(["ampm-jobs"]);
+        setCachedData("ampm-jobs", ampmJobs);
+        results.ampmJobs = "refreshed";
+      } catch (error: any) {
+        results.ampmJobs = `error: ${error.message}`;
+      }
+      
+      console.log("Cache refresh complete:", results);
+      res.json({ success: true, cleared: true, refetched: true, results });
+    } else {
+      res.json({ success: true, cleared: true, refetched: false });
+    }
+  });
+  
+  // Get cache status
+  app.get("/api/external-db/cache-status", async (_req, res) => {
+    const now = Date.now();
+    const status: Record<string, { cached: boolean; ageMs?: number; expiresInMs?: number }> = {};
+    
+    const keysToCheck = ["sessions", "lunch-jobs", "ampm-jobs"];
+    
+    for (const key of keysToCheck) {
+      const cached = externalDbCache[key];
+      if (cached && now - cached.timestamp < CACHE_TTL) {
+        const ageMs = now - cached.timestamp;
+        status[key] = {
+          cached: true,
+          ageMs,
+          expiresInMs: CACHE_TTL - ageMs
+        };
+      } else {
+        status[key] = { cached: false };
+      }
+    }
+    
+    res.json({ status, cacheTtlMs: CACHE_TTL });
   });
 
   // Get hardcoded job IDs - constant list for all sessions

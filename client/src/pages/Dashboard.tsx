@@ -22,15 +22,6 @@ const tools = [
     iconSize: 24,
   },
   {
-    id: "upload-lists",
-    title: "File Manager",
-    description:
-      "Upload documentation such as staff lists, lunchtime and ampm job lists and other specifications.",
-    icon: Upload,
-    iconSize: 20,
-    comingSoon: true,
-  },
-  {
     id: "schedule-builder",
     title: "Schedule Builder",
     description:
@@ -55,6 +46,15 @@ const tools = [
       "Build and edit a digitized binder for staff to easily find whatever they're looking for at a moment's notice.",
     icon: BookOpen,
     iconSize: 22,
+    comingSoon: true,
+  },
+  {
+    id: "upload-lists",
+    title: "File Manager",
+    description:
+      "Upload documentation such as staff lists, lunchtime and ampm job lists and other specifications.",
+    icon: Upload,
+    iconSize: 20,
     comingSoon: true,
   },
 ];

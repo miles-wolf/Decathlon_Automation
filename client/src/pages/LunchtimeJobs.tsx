@@ -1252,7 +1252,7 @@ export default function LunchtimeJobs() {
               <CardContent>
                 <Tabs value={configTab} onValueChange={handleConfigTabChange}>
                   <TabsList className="mb-4 flex-nowrap overflow-x-auto overflow-y-hidden max-w-full scrollbar-thin">
-                    <TabsTrigger value="full-session" data-testid="tab-full-session" className="sticky left-0 z-10 bg-muted">
+                    <TabsTrigger value="full-session" data-testid="tab-full-session">
                       <Calendar className="h-4 w-4 mr-2" />
                       Full Session
                     </TabsTrigger>

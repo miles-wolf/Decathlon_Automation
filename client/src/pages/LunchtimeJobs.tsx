@@ -576,7 +576,7 @@ export default function LunchtimeJobs() {
     const num = parseInt(customWeekInput);
     if (num > 0 && num <= 10) {
       setNumberOfWeeks(num);
-      setShowCustomWeekInput(num > 4);
+      // Keep the custom input visible - only hide when user selects 1-4 from dropdown
       adjustWeekConfigs(num);
     } else if (num > 10) {
       toast({

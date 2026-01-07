@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Briefcase, Clock, Upload, Calendar, Trophy, BookOpen } from "lucide-react";
 import { Hero } from "@/components/Hero";
 import { ToolCard } from "@/components/ToolCard";
+import { apiRequest } from "@/lib/queryClient";
 
 const tools = [
   {
@@ -58,6 +60,24 @@ const tools = [
 ];
 
 export default function Dashboard() {
+  // Warm up the cache when the dashboard loads
+  // This pre-fetches sessions, lunch jobs, and AM/PM jobs data
+  // so it's ready when users open the tools
+  useEffect(() => {
+    const warmUpCache = async () => {
+      try {
+        console.log("Warming up cache...");
+        await apiRequest("POST", "/api/external-db/warm-cache");
+        console.log("Cache warm-up complete");
+      } catch (error) {
+        console.error("Cache warm-up failed:", error);
+        // Silently fail - the tools will still work, just with initial load time
+      }
+    };
+    
+    warmUpCache();
+  }, []);
+  
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Hero />

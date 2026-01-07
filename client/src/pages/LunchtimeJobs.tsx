@@ -1251,8 +1251,8 @@ export default function LunchtimeJobs() {
               </CardHeader>
               <CardContent>
                 <Tabs value={configTab} onValueChange={handleConfigTabChange}>
-                  <TabsList className="mb-4 flex-nowrap overflow-x-auto overflow-y-hidden max-w-full scrollbar-thin">
-                    <TabsTrigger value="full-session" data-testid="tab-full-session">
+                  <TabsList className="mb-4 flex-nowrap overflow-x-auto overflow-y-hidden w-full scrollbar-thin inline-flex justify-start">
+                    <TabsTrigger value="full-session" data-testid="tab-full-session" className="shrink-0">
                       <Calendar className="h-4 w-4 mr-2" />
                       Full Session
                     </TabsTrigger>
@@ -1261,6 +1261,7 @@ export default function LunchtimeJobs() {
                         key={config.weekNumber} 
                         value={`week-${config.weekNumber}`} 
                         data-testid={`tab-week-${config.weekNumber}`}
+                        className="shrink-0"
                       >
                         <FileText className="h-4 w-4 mr-2" />
                         Week {config.weekNumber}

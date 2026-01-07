@@ -5,7 +5,7 @@ export function Hero() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-              Simple, modular tools for running camp with ease
+              Simple tools for running camp with ease
             </h1>
             <p className="mt-5 max-w-2xl text-muted-foreground">
               Focus less on paperwork and more on having fun in the sun with the kids.

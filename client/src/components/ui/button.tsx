@@ -11,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-[#47c8f5] text-white border border-[#3bb8e5]",
+          "bg-[#47c8f5] text-white border-2 border-[#3bb8e5] focus:border-primary focus:ring-1 focus:ring-primary active:border-primary",
         destructive:
           "bg-destructive text-destructive-foreground border border-destructive-border",
         active:

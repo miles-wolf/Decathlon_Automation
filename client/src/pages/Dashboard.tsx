@@ -9,7 +9,7 @@ const tools = [
     id: "lunchtime-jobs",
     title: "Lunchtime Job Assigner",
     description:
-      "Assign and balance lunch duties across staff with one click and quick edits.",
+      "Assign and balance lunch duties across staff with one click and quick edits",
     icon: Briefcase,
     iconSize: 24,
   },
@@ -17,7 +17,7 @@ const tools = [
     id: "am-pm-jobs",
     title: "AM/PM Job Assigner",
     description:
-      "Assign before and after camp roles with one click and quick edits.",
+      "Assign before and after camp roles with one click and quick edits",
     icon: Clock,
     iconSize: 24,
   },
@@ -25,7 +25,7 @@ const tools = [
     id: "schedule-builder",
     title: "Schedule Builder",
     description:
-      "Create the daily schedule for the entire session or for special Fridays.",
+      "Create the daily schedule for the entire session or for special Fridays",
     icon: Calendar,
     iconSize: 22,
     comingSoon: true,
@@ -34,7 +34,7 @@ const tools = [
     id: "tournament-builder",
     title: "Tournament Builder",
     description:
-      "Create fair teams and brackets for soccer, football, basketball tournaments and more.",
+      "Create fair teams and brackets for soccer, football, basketball tournaments and more",
     icon: Trophy,
     iconSize: 22,
     comingSoon: true,
@@ -43,7 +43,7 @@ const tools = [
     id: "digitized-binder",
     title: "Digitized Binder",
     description:
-      "Build and edit a digitized binder for staff to easily find whatever they're looking for at a moment's notice.",
+      "Build and edit a digitized binder for staff to easily find whatever they're looking for at a moment's notice",
     icon: BookOpen,
     iconSize: 22,
     comingSoon: true,
@@ -52,7 +52,7 @@ const tools = [
     id: "upload-lists",
     title: "File Manager",
     description:
-      "Upload documentation such as staff lists, lunchtime and ampm job lists and other specifications.",
+      "Upload documentation such as staff lists, lunchtime and ampm job lists and other specifications",
     icon: Upload,
     iconSize: 20,
     comingSoon: true,

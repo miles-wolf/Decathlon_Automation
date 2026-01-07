@@ -1323,7 +1323,7 @@ export default function LunchtimeJobs() {
                               <SelectItem value="2">2 Weeks</SelectItem>
                               <SelectItem value="3">3 Weeks</SelectItem>
                               <SelectItem value="4">4 Weeks</SelectItem>
-                              <SelectItem value="custom">Custom...</SelectItem>
+                              <SelectItem value="custom">More...</SelectItem>
                             </SelectContent>
                           </Select>
                           {showCustomWeekInput && (

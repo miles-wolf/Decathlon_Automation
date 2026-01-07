@@ -1251,7 +1251,7 @@ export default function LunchtimeJobs() {
               </CardHeader>
               <CardContent>
                 <Tabs value={configTab} onValueChange={handleConfigTabChange}>
-                  <TabsList className="mb-4 flex-nowrap overflow-x-auto max-w-full">
+                  <TabsList className="mb-4 flex-nowrap overflow-x-auto max-w-full scrollbar-thin">
                     <TabsTrigger value="full-session" data-testid="tab-full-session">
                       <Calendar className="h-4 w-4 mr-2" />
                       Full Session
@@ -1303,7 +1303,7 @@ export default function LunchtimeJobs() {
                               }
                             }}
                             onBlur={() => setWeeksInputValue(numberOfWeeks.toString())}
-                            className="w-20 text-center font-medium"
+                            className="w-20 text-center font-medium [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             data-testid="input-number-of-weeks"
                           />
                           <span className="text-sm text-muted-foreground">weeks (press Enter to apply)</span>

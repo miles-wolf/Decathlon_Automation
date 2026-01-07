@@ -1303,10 +1303,10 @@ export default function LunchtimeJobs() {
                               }
                             }}
                             onBlur={() => setWeeksInputValue(numberOfWeeks.toString())}
-                            className="w-20 text-center font-medium"
+                            className="w-12 text-center font-medium"
                             data-testid="input-number-of-weeks"
                           />
-                          <span className="text-sm text-muted-foreground">weeks (press Enter to apply)</span>
+                          <span className="text-sm text-muted-foreground">weeks (press Enter)</span>
                         </div>
                       </div>
                     </div>

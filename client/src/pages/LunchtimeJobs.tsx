@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw } from "lucide-react";
+import { ArrowLeft, Play, Download, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw, Type } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -1327,19 +1327,23 @@ export default function LunchtimeJobs() {
                             </SelectContent>
                           </Select>
                           {showCustomWeekInput && (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min={1}
-                                max={10}
-                                value={customWeekInput}
-                                onChange={(e) => setCustomWeekInput(e.target.value)}
-                                onBlur={handleCustomWeekSubmit}
-                                onKeyDown={(e) => e.key === "Enter" && handleCustomWeekSubmit()}
-                                className="w-20"
-                                data-testid="input-custom-weeks"
-                                autoFocus
-                              />
+                            <div className="flex items-center gap-2 animate-pulse">
+                              <div className="relative">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={10}
+                                  placeholder="1-10"
+                                  value={customWeekInput}
+                                  onChange={(e) => setCustomWeekInput(e.target.value)}
+                                  onBlur={handleCustomWeekSubmit}
+                                  onKeyDown={(e) => e.key === "Enter" && handleCustomWeekSubmit()}
+                                  className="w-20 pr-6 text-center font-medium"
+                                  data-testid="input-custom-weeks"
+                                  autoFocus
+                                />
+                                <Type className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground animate-pulse" />
+                              </div>
                               <span className="text-sm text-muted-foreground">weeks</span>
                             </div>
                           )}

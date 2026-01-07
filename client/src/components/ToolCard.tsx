@@ -17,7 +17,7 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconS
   if (comingSoon) {
     return (
       <div
-        className="block rounded-2xl border bg-card p-5 opacity-60 cursor-not-allowed"
+        className="block rounded-2xl border-2 bg-card p-5 opacity-60 cursor-not-allowed"
         data-testid={`card-tool-${id}`}
       >
         <div className="flex items-center gap-3">
@@ -39,7 +39,7 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconS
   return (
     <Link
       href={`/${id}`}
-      className="group block rounded-2xl border bg-card p-5 hover:shadow-md transition-shadow hover-elevate"
+      className="group block rounded-2xl border-2 bg-card p-5 hover:shadow-md transition-shadow hover-elevate focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
       data-testid={`card-tool-${id}`}
     >
       <div className="flex items-center gap-3">

@@ -5,10 +5,10 @@ export function Hero() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-              Simple, modular tools for running Decathlon Sports Camp with ease
+              Simple, modular tools for running camp with ease
             </h1>
             <p className="mt-5 max-w-2xl text-muted-foreground">
-              Start with job assignments today. Add schedule builders, tournament team builders, digitized binders and more later - all in one place. That way you and your staff can focus less on paperwork and more on having fun in the summer sun with the kids.
+              Focus less on paperwork and more on having fun in the sun with the kids.
             </p>
           </div>
         </div>

@@ -138,6 +138,7 @@ export default function LunchtimeJobs() {
   const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [numberOfWeeks, setNumberOfWeeks] = useState(1);
+  const [weeksInputValue, setWeeksInputValue] = useState("1");
   const { toast } = useToast();
   const logStream = useLogStream();
   
@@ -1283,20 +1284,29 @@ export default function LunchtimeJobs() {
                             type="number"
                             min={1}
                             max={10}
-                            value={numberOfWeeks}
-                            onChange={(e) => {
-                              const num = parseInt(e.target.value);
-                              if (num >= 1 && num <= 10) {
-                                setNumberOfWeeks(num);
-                                adjustWeekConfigs(num);
-                              } else if (e.target.value === "") {
-                                // Allow empty for typing
+                            value={weeksInputValue}
+                            onChange={(e) => setWeeksInputValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const num = parseInt(weeksInputValue);
+                                if (num >= 1 && num <= 10) {
+                                  setNumberOfWeeks(num);
+                                  adjustWeekConfigs(num);
+                                } else {
+                                  setWeeksInputValue(numberOfWeeks.toString());
+                                  toast({
+                                    title: "Invalid Number",
+                                    description: "Please enter a number between 1 and 10",
+                                    variant: "destructive",
+                                  });
+                                }
                               }
                             }}
+                            onBlur={() => setWeeksInputValue(numberOfWeeks.toString())}
                             className="w-20 text-center font-medium"
                             data-testid="input-number-of-weeks"
                           />
-                          <span className="text-sm text-muted-foreground">weeks</span>
+                          <span className="text-sm text-muted-foreground">weeks (press Enter to apply)</span>
                         </div>
                       </div>
                     </div>

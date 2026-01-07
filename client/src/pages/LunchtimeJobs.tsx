@@ -1244,7 +1244,7 @@ export default function LunchtimeJobs() {
                       Configuration
                     </CardTitle>
                     <CardDescription className="mt-2">
-                      Set session-wide defaults or customize individual weeks
+                      Set session-wide defaults or customize individual weeks to specify things such as staff game days, tie dye days, partial sessions for staff and more
                     </CardDescription>
                   </div>
                 </div>

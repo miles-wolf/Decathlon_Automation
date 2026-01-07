@@ -137,6 +137,9 @@ export default function LunchtimeJobs() {
   const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
   const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [numberOfWeeks, setNumberOfWeeks] = useState(1);
+  const [customWeekInput, setCustomWeekInput] = useState("");
+  const [showCustomWeekInput, setShowCustomWeekInput] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
   
@@ -543,20 +546,70 @@ export default function LunchtimeJobs() {
     }));
   };
 
-  const handleAddWeek = () => {
-    const newWeekNumber = weekConfigs.length + 1;
-    setWeekConfigs([...weekConfigs, createDefaultWeekConfig(newWeekNumber)]);
-    setActiveWeek(newWeekNumber);
+  const handleConfigTabChange = (value: string) => {
+    setConfigTab(value);
+    // Sync activeWeek when selecting a week tab
+    if (value.startsWith("week-")) {
+      const weekNum = parseInt(value.replace("week-", ""));
+      if (!isNaN(weekNum)) {
+        setActiveWeek(weekNum);
+      }
+    }
   };
 
-  const handleRemoveWeek = (weekNumber: number) => {
-    if (weekConfigs.length <= 1) return;
-    const newConfigs = weekConfigs
-      .filter(w => w.weekNumber !== weekNumber)
-      .map((w, i) => ({ ...w, weekNumber: i + 1 }));
-    setWeekConfigs(newConfigs);
-    if (activeWeek > newConfigs.length) {
-      setActiveWeek(newConfigs.length);
+  const handleNumberOfWeeksChange = (value: string) => {
+    if (value === "custom") {
+      setShowCustomWeekInput(true);
+      setCustomWeekInput(numberOfWeeks.toString());
+      return;
+    }
+    setShowCustomWeekInput(false);
+    const num = parseInt(value);
+    if (num > 0 && num <= 10) {
+      setNumberOfWeeks(num);
+      setCustomWeekInput("");
+      adjustWeekConfigs(num);
+    }
+  };
+
+  const handleCustomWeekSubmit = () => {
+    const num = parseInt(customWeekInput);
+    if (num > 0 && num <= 10) {
+      setNumberOfWeeks(num);
+      setShowCustomWeekInput(num > 4);
+      adjustWeekConfigs(num);
+    } else if (num > 10) {
+      toast({
+        title: "Invalid Number",
+        description: "Maximum 10 weeks allowed",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const adjustWeekConfigs = (targetCount: number) => {
+    if (targetCount === weekConfigs.length) return;
+    
+    if (targetCount > weekConfigs.length) {
+      // Add more weeks
+      const newConfigs = [...weekConfigs];
+      for (let i = weekConfigs.length + 1; i <= targetCount; i++) {
+        newConfigs.push(createDefaultWeekConfig(i));
+      }
+      setWeekConfigs(newConfigs);
+    } else {
+      // Remove weeks from the end
+      setWeekConfigs(weekConfigs.slice(0, targetCount));
+      // Reset configTab if it points to a removed week
+      if (configTab.startsWith("week-")) {
+        const currentWeek = parseInt(configTab.replace("week-", ""));
+        if (currentWeek > targetCount) {
+          setConfigTab("full-session");
+        }
+      }
+      if (activeWeek > targetCount) {
+        setActiveWeek(targetCount);
+      }
     }
   };
 
@@ -1228,23 +1281,72 @@ export default function LunchtimeJobs() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Tabs value={configTab} onValueChange={setConfigTab}>
-                  <TabsList className="mb-4">
+                <Tabs value={configTab} onValueChange={handleConfigTabChange}>
+                  <TabsList className="mb-4 flex-wrap">
                     <TabsTrigger value="full-session" data-testid="tab-full-session">
                       <Calendar className="h-4 w-4 mr-2" />
                       Full Session
                     </TabsTrigger>
-                    <TabsTrigger value="weeks" data-testid="tab-weeks">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Individual Weeks
-                    </TabsTrigger>
+                    {weekConfigs.map((config) => (
+                      <TabsTrigger 
+                        key={config.weekNumber} 
+                        value={`week-${config.weekNumber}`} 
+                        data-testid={`tab-week-${config.weekNumber}`}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Week {config.weekNumber}
+                      </TabsTrigger>
+                    ))}
                   </TabsList>
 
                   {/* Full Session Tab */}
                   <TabsContent value="full-session" className="space-y-6">
-                    <div className="bg-muted/50 rounded-lg p-4 mb-4">
+                    {/* Number of Weeks Selector */}
+                    <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                          <Label className="text-base font-medium">Number of Weeks</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Select how many weeks to configure for this session
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={showCustomWeekInput ? "custom" : numberOfWeeks.toString()}
+                            onValueChange={handleNumberOfWeeksChange}
+                          >
+                            <SelectTrigger className="w-32" data-testid="select-number-of-weeks">
+                              <SelectValue placeholder="Select weeks" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1 Week</SelectItem>
+                              <SelectItem value="2">2 Weeks</SelectItem>
+                              <SelectItem value="3">3 Weeks</SelectItem>
+                              <SelectItem value="4">4 Weeks</SelectItem>
+                              <SelectItem value="custom">Custom...</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {showCustomWeekInput && (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min={1}
+                                max={10}
+                                value={customWeekInput}
+                                onChange={(e) => setCustomWeekInput(e.target.value)}
+                                onBlur={handleCustomWeekSubmit}
+                                onKeyDown={(e) => e.key === "Enter" && handleCustomWeekSubmit()}
+                                className="w-20"
+                                data-testid="input-custom-weeks"
+                                autoFocus
+                              />
+                              <span className="text-sm text-muted-foreground">weeks</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        Settings configured here apply to all weeks by default. You can override these settings for specific weeks in the Individual Weeks tab.
+                        Settings configured here apply to all weeks by default. You can override these settings for specific weeks using the week tabs above.
                       </p>
                     </div>
 
@@ -1526,38 +1628,7 @@ export default function LunchtimeJobs() {
                     </div>
                   </TabsContent>
 
-                  {/* Individual Weeks Tab */}
-                  <TabsContent value="weeks" className="space-y-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-muted-foreground">
-                        Override session defaults for specific weeks. Weeks use session defaults unless customized here.
-                      </p>
-                      <Button variant="outline" size="sm" onClick={handleAddWeek} data-testid="button-add-week">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Week
-                      </Button>
-                    </div>
-
-                    <Tabs value={`week-${activeWeek}`} onValueChange={(v) => setActiveWeek(parseInt(v.replace("week-", "")))}>
-                  <TabsList className="mb-4 flex-wrap">
-                    {weekConfigs.map((config) => (
-                      <TabsTrigger key={config.weekNumber} value={`week-${config.weekNumber}`} data-testid={`tab-week-${config.weekNumber}`}>
-                        Week {config.weekNumber}
-                        {weekConfigs.length > 1 && (
-                          <button
-                            className="ml-2 hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveWeek(config.weekNumber);
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-
+                  {/* Individual Week Tabs */}
                   {weekConfigs.map((config) => (
                     <TabsContent key={config.weekNumber} value={`week-${config.weekNumber}`} className="space-y-4">
                       {/* Week Schedule Section - Collapsible */}
@@ -1990,8 +2061,6 @@ export default function LunchtimeJobs() {
                       </div>
                     </TabsContent>
                   ))}
-                    </Tabs>
-                  </TabsContent>
                 </Tabs>
               </CardContent>
             </Card>

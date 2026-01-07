@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown } from "lucide-react";
+import { ArrowLeft, Play, Download, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -136,8 +136,36 @@ export default function LunchtimeJobs() {
   const [hardcodedOpen, setHardcodedOpen] = useState(true);
   const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
   const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
+  
+  // Refresh data mutation - clears cache and re-fetches all data
+  const refreshDataMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/external-db/refresh-cache", { refetch: true });
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate all related queries to force refetch
+      queryClient.invalidateQueries({ queryKey: ["/api/external-db/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/external-db/lunch-jobs"] });
+      if (selectedSessionId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/external-db/eligible-staff", selectedSessionId] });
+      }
+      toast({
+        title: "Data Refreshed",
+        description: "Successfully refreshed all data from the database.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Refresh Failed",
+        description: error.message || "Failed to refresh data. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Fetch external sessions
   const { data: externalSessions = [], isLoading: sessionsLoading } = useQuery<ExternalSession[]>({
@@ -1136,8 +1164,8 @@ export default function LunchtimeJobs() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-4 items-end">
-                <div className="flex-1 space-y-2">
+              <div className="flex gap-4 items-end flex-wrap">
+                <div className="flex-1 min-w-[200px] space-y-2">
                   <Label htmlFor="session">Session</Label>
                   <Select
                     value={selectedSessionId?.toString() || ""}
@@ -1156,17 +1184,29 @@ export default function LunchtimeJobs() {
                     </SelectContent>
                   </Select>
                 </div>
-                {selectedSessionId && (
-                  <div className="flex gap-2">
-                    <Badge variant="outline" className="py-2">
-                      <Users className="h-3 w-3 mr-1" />
-                      {staffLoading ? "..." : `${eligibleStaff.length} staff`}
-                    </Badge>
-                    <Badge variant="outline" className="py-2">
-                      {jobsLoading ? "..." : `${lunchJobs.length} jobs`}
-                    </Badge>
-                  </div>
-                )}
+                <div className="flex gap-2 items-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshDataMutation.mutate()}
+                    disabled={refreshDataMutation.isPending}
+                    data-testid="button-refresh-data"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${refreshDataMutation.isPending ? "animate-spin" : ""}`} />
+                    {refreshDataMutation.isPending ? "Refreshing..." : "Refresh Data"}
+                  </Button>
+                  {selectedSessionId && (
+                    <>
+                      <Badge variant="outline" className="py-2">
+                        <Users className="h-3 w-3 mr-1" />
+                        {staffLoading ? "..." : `${eligibleStaff.length} staff`}
+                      </Badge>
+                      <Badge variant="outline" className="py-2">
+                        {jobsLoading ? "..." : `${lunchJobs.length} jobs`}
+                      </Badge>
+                    </>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

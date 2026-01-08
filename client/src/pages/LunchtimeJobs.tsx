@@ -117,14 +117,29 @@ interface GroupCoverageIssue {
   group_id: number;
 }
 
+interface GroupSupervisionIssue {
+  week: number;
+  day: string;
+  group_id: number;
+  assigned: number;
+  total: number;
+}
+
 interface GroupCoverageValidation {
   passed: boolean;
   message: string;
   issues: GroupCoverageIssue[];
 }
 
+interface GroupSupervisionValidation {
+  passed: boolean;
+  message: string;
+  issues: GroupSupervisionIssue[];
+}
+
 interface ValidationResult {
   groupCoverage: GroupCoverageValidation;
+  groupSupervision?: GroupSupervisionValidation;
 }
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday"];
@@ -1190,12 +1205,19 @@ export default function LunchtimeJobs() {
       if (validation) {
         setValidationResult(validation);
         
-        // Log validation result
+        // Log validation results
         if (validation.groupCoverage) {
           if (validation.groupCoverage.passed) {
             logStream.success(validation.groupCoverage.message);
           } else {
             logStream.warn(`Validation warning: ${validation.groupCoverage.message}`);
+          }
+        }
+        if (validation.groupSupervision) {
+          if (validation.groupSupervision.passed) {
+            logStream.success(validation.groupSupervision.message);
+          } else {
+            logStream.warn(`Supervision warning: ${validation.groupSupervision.message}`);
           }
         }
       }
@@ -1225,11 +1247,14 @@ export default function LunchtimeJobs() {
           title: "Success",
           description: data.message || "Assignments generated successfully",
         });
-      } else if (validation && !validation.groupCoverage.passed) {
+      } else if (validation && (!validation.groupCoverage.passed || (validation.groupSupervision && !validation.groupSupervision.passed))) {
         // Show validation warnings even with no assignments
+        const warnings = [];
+        if (!validation.groupCoverage.passed) warnings.push(validation.groupCoverage.message);
+        if (validation.groupSupervision && !validation.groupSupervision.passed) warnings.push(validation.groupSupervision.message);
         toast({
           title: "Warning",
-          description: validation.groupCoverage.message,
+          description: warnings.join(". "),
           variant: "destructive",
         });
       }
@@ -2305,6 +2330,48 @@ export default function LunchtimeJobs() {
                           </div>
                         )}
 
+                        {/* Group Supervision Validation */}
+                        {validationResult?.groupSupervision && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupSupervision.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupSupervision.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Supervision Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupSupervision.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupSupervision.message}
+                            </p>
+                            {!validationResult.groupSupervision.passed && validationResult.groupSupervision.issues.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30">
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  Groups with all staff assigned (no one staying back):
+                                </p>
+                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                  {validationResult.groupSupervision.issues.slice(0, 20).map((issue, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                      Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total} assigned)
+                                    </Badge>
+                                  ))}
+                                  {validationResult.groupSupervision.issues.length > 20 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{validationResult.groupSupervision.issues.length - 20} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Job Target Overview - Collapsible */}
                         <Collapsible open={targetStaffOpen} onOpenChange={setTargetStaffOpen}>
                           <div className="border rounded-lg p-4">
@@ -2558,6 +2625,46 @@ export default function LunchtimeJobs() {
                                   {validationResult.groupCoverage.issues.length > 20 && (
                                     <Badge variant="outline" className="text-xs">
                                       +{validationResult.groupCoverage.issues.length - 20} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {validationResult?.groupSupervision && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupSupervision.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupSupervision.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Supervision Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupSupervision.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupSupervision.message}
+                            </p>
+                            {!validationResult.groupSupervision.passed && validationResult.groupSupervision.issues.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30">
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  Groups with all staff assigned (no one staying back):
+                                </p>
+                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                  {validationResult.groupSupervision.issues.slice(0, 20).map((issue, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                      Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total} assigned)
+                                    </Badge>
+                                  ))}
+                                  {validationResult.groupSupervision.issues.length > 20 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{validationResult.groupSupervision.issues.length - 20} more
                                     </Badge>
                                   )}
                                 </div>

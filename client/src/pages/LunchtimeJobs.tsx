@@ -1318,6 +1318,27 @@ export default function LunchtimeJobs() {
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Upload Config at top of configuration */}
+                <div className="flex justify-end mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="button-upload-config-top"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Config
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadConfig}
+                    accept=".json"
+                    className="hidden"
+                    data-testid="input-upload-config"
+                  />
+                </div>
+
                 <Tabs value={configTab} onValueChange={handleConfigTabChange}>
                   <TabsList className="mb-4 flex-nowrap overflow-x-auto overflow-y-hidden w-full scrollbar-thin inline-flex justify-start">
                     <TabsTrigger value="full-session" data-testid="tab-full-session" className="shrink-0">
@@ -2119,22 +2140,6 @@ export default function LunchtimeJobs() {
                     <Download className="h-4 w-4 mr-2" />
                     Download Config
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    data-testid="button-upload-config"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Config
-                  </Button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleUploadConfig}
-                    accept=".json"
-                    className="hidden"
-                    data-testid="input-upload-config"
-                  />
                   <Button
                     variant="outline"
                     onClick={() => {

@@ -2243,7 +2243,7 @@ export default function LunchtimeJobs() {
                             <div>
                               <h4 className="font-medium">Staffing Variations</h4>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Days where staffing differs from the target (excludes Tie Dye)
+                                Days where staffing differs from the target
                               </p>
                             </div>
                             <Select value={variationFilter} onValueChange={(v) => setVariationFilter(v as 'below' | 'all')}>

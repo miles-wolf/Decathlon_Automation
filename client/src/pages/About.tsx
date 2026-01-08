@@ -108,7 +108,7 @@ export default function About() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Built by <span className="font-semibold text-foreground">Curait</span>
+                Built by <span className="font-semibold text-foreground">Project Distillation</span>
               </p>
             </CardContent>
           </Card>

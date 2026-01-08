@@ -1,9 +1,10 @@
-import { ArrowLeft, Play, Download, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Play, Download, Upload, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus, AlertTriangle, Check } from "lucide-react";
+import { useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -103,6 +104,7 @@ export default function AMPMJobs() {
   const [hasAppliedDefaults, setHasAppliedDefaults] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Apply default session from settings on mount
   useEffect(() => {
@@ -561,6 +563,82 @@ export default function AMPMJobs() {
     });
   };
 
+  // Download configuration
+  const handleDownloadConfig = () => {
+    const config = {
+      version: "1.0",
+      sessionId: selectedSessionId,
+      hardcodedAssignments,
+      customAssignments,
+      staffToRemove,
+      staffToAdd,
+      maxOverrides,
+      customMaxOverrides,
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ampm_config_session_${selectedSessionId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Configuration Downloaded",
+      description: "Your configuration has been saved",
+    });
+  };
+
+  // Upload configuration
+  const handleUploadConfig = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const config = JSON.parse(e.target?.result as string);
+        
+        if (!config.version || !config.sessionId) {
+          throw new Error("Invalid configuration file format");
+        }
+
+        if (config.sessionId !== selectedSessionId) {
+          toast({
+            title: "Session Mismatch",
+            description: `Configuration is for session ${config.sessionId}. Please select that session first.`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (config.hardcodedAssignments) setHardcodedAssignments(config.hardcodedAssignments);
+        if (config.customAssignments) setCustomAssignments(config.customAssignments);
+        if (config.staffToRemove) setStaffToRemove(config.staffToRemove);
+        if (config.staffToAdd) setStaffToAdd(config.staffToAdd);
+        if (config.maxOverrides) setMaxOverrides(config.maxOverrides);
+        if (config.customMaxOverrides) setCustomMaxOverrides(config.customMaxOverrides);
+
+        toast({
+          title: "Configuration Loaded",
+          description: "Your configuration has been restored",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Upload Failed",
+          description: error.message || "Could not parse configuration file",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input so same file can be uploaded again
+    event.target.value = "";
+  };
+
   // Group results by job for display
   const resultsByJob = useMemo(() => {
     const grouped: Record<string, AssignmentResult[]> = {};
@@ -604,13 +682,39 @@ export default function AMPMJobs() {
           {/* Session Selection */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Session Selection
-              </CardTitle>
-              <CardDescription>
-                Select a camp session to generate AM/PM job assignments
-              </CardDescription>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Session Selection
+                  </CardTitle>
+                  <CardDescription className="mt-2">
+                    Select a camp session to generate AM/PM job assignments
+                  </CardDescription>
+                </div>
+                {selectedSessionId && (
+                  <div className="shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      data-testid="button-upload-config"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload Config
+                    </Button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleUploadConfig}
+                      accept=".json"
+                      className="hidden"
+                      data-testid="input-upload-config"
+                    />
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="flex gap-4 items-end flex-wrap">
@@ -1121,36 +1225,14 @@ export default function AMPMJobs() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={isGenerating}
-                    data-testid="button-generate"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    {isGenerating ? "Generating..." : "Generate Assignments"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleDownloadCSV}
-                    disabled={assignmentResults.length === 0}
-                    data-testid="button-download"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
-                      window.open(url, "_blank");
-                    }}
-                    data-testid="button-view-sheets"
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View Google Sheet
-                  </Button>
-                </div>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  data-testid="button-generate"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  {isGenerating ? "Generating..." : "Generate Assignments"}
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -1161,7 +1243,7 @@ export default function AMPMJobs() {
               <CardHeader className="pb-3">
                 <CardTitle>Output</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <Tabs value={outputTab} onValueChange={setOutputTab}>
                   <TabsList className="mb-4">
                     <TabsTrigger value="summary" data-testid="tab-summary">
@@ -1181,40 +1263,90 @@ export default function AMPMJobs() {
                   <TabsContent value="summary">
                     {assignmentResults.length > 0 ? (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {resultsByJob.map(([jobName, results]) => {
+                        {/* Total summary */}
+                        <div className="text-sm text-muted-foreground">
+                          Total: {assignmentResults.length} assignments across {resultsByJob.length} jobs
+                        </div>
+                        
+                        {/* Staffing variations - compact list format like LunchtimeJobs */}
+                        {(() => {
+                          const variations: { jobName: string; count: number; target: number; type: 'above' | 'below' }[] = [];
+                          
+                          resultsByJob.forEach(([jobName, results]) => {
                             const jobId = results[0]?.job_id;
                             const job = jobId ? getJobDetails(jobId) : null;
                             const target = job?.normal_staff_assigned ?? null;
-                            const isOverTarget = target !== null && results.length > target;
-                            const isUnderTarget = target !== null && results.length < target;
                             
-                            return (
-                              <div 
-                                key={jobName} 
-                                className={`border rounded-lg p-3 ${
-                                  isOverTarget ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20' : 
-                                  isUnderTarget ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' : ''
-                                }`}
-                              >
-                                <div className="text-sm font-medium truncate" title={jobName}>
-                                  {jobName}
-                                </div>
-                                <div className="text-2xl font-bold mt-1">{results.length}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  staff assigned {target !== null && (
-                                    <span className={isOverTarget ? 'text-yellow-600' : isUnderTarget ? 'text-blue-600' : ''}>
-                                      (target: {target})
-                                    </span>
-                                  )}
+                            if (target !== null) {
+                              if (results.length > target) {
+                                variations.push({ jobName, count: results.length, target, type: 'above' });
+                              } else if (results.length < target) {
+                                variations.push({ jobName, count: results.length, target, type: 'below' });
+                              }
+                            }
+                          });
+                          
+                          const hasBelowTarget = variations.some(v => v.type === 'below');
+                          
+                          return (
+                            <div className={`border rounded-lg p-4 ${hasBelowTarget ? 'border-amber-500/50 bg-amber-500/5' : 'border-green-500/50 bg-green-500/5'}`}>
+                              <div className="flex items-center gap-2 mb-3">
+                                {hasBelowTarget ? (
+                                  <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                    <span className="text-white text-xs font-bold">!</span>
+                                  </div>
+                                ) : (
+                                  <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                    <Check className="h-3 w-3 text-white" />
+                                  </div>
+                                )}
+                                <div>
+                                  <h4 className="font-medium">Staffing Variations</h4>
+                                  <p className="text-xs text-muted-foreground">
+                                    Jobs where staffing differs from the target
+                                  </p>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                        <div className="text-sm text-muted-foreground pt-2 border-t">
-                          Total: {assignmentResults.length} assignments across {resultsByJob.length} jobs
-                        </div>
+                              
+                              {variations.length === 0 ? (
+                                <p className="text-sm text-green-700 dark:text-green-400">
+                                  All jobs are at target staffing levels.
+                                </p>
+                              ) : (
+                                <div className="space-y-2 max-h-48 overflow-auto">
+                                  {variations.map((v, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 text-sm">
+                                      <Badge 
+                                        variant="outline" 
+                                        className={v.type === 'above' 
+                                          ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
+                                          : 'border-blue-500 text-blue-700 dark:text-blue-400'}
+                                      >
+                                        {v.type === 'above' ? '↑' : '↓'}
+                                      </Badge>
+                                      <span className="text-muted-foreground">
+                                        {v.jobName}: <strong>{v.count}</strong> (target: {v.target})
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {variations.length > 0 && (
+                                <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
+                                    Above target
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
+                                    Below target
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div className="text-center text-muted-foreground py-8">
@@ -1258,6 +1390,42 @@ export default function AMPMJobs() {
                     <LogViewer logs={logStream.logs} maxHeight="400px" />
                   </TabsContent>
                 </Tabs>
+                
+                {/* Action buttons at bottom */}
+                {assignmentResults.length > 0 && (
+                  <div className="flex flex-wrap gap-3 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      onClick={handleDownloadCSV}
+                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      data-testid="button-download-output"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Output CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
+                        window.open(url, "_blank");
+                      }}
+                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      data-testid="button-view-sheets"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View Google Sheet
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleDownloadConfig}
+                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      data-testid="button-download-config"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Config
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

@@ -693,7 +693,7 @@ export default function AMPMJobs() {
                     variant="outline"
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-primary focus:ring-primary"
+                    className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                     data-testid="button-upload-config"
                   >
                     <Upload className="h-4 w-4 mr-2" />

@@ -1391,7 +1391,7 @@ export default function AMPMJobs() {
                     <Button
                       variant="outline"
                       onClick={handleDownloadCSV}
-                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                       data-testid="button-download-output"
                     >
                       <Download className="h-4 w-4 mr-2" />
@@ -1403,7 +1403,7 @@ export default function AMPMJobs() {
                         const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
                         window.open(url, "_blank");
                       }}
-                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                       data-testid="button-view-sheets"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
@@ -1412,7 +1412,7 @@ export default function AMPMJobs() {
                     <Button
                       variant="outline"
                       onClick={handleDownloadConfig}
-                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                      className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                       data-testid="button-download-config"
                     >
                       <Download className="h-4 w-4 mr-2" />

@@ -1,52 +1,53 @@
-staff_name,M_1,T_1,W_1,TH_1,M_2,T_2,W_2,TH_2,M_3,T_3,W_3,TH_3,M_4,T_4,W_4,TH_4
-COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,,,,,,,,,
-Cassie Hickinbotham,BR,,MULTI,,GA,,,,CA,,GR1,,MULTI,,BR,
-Jack Bucich,GAGA 1,,SUB,,MULTI,,,,GA,,WB,,WA,,PG,
-Jackson Dewberry,WB,,BR,,WB,,S,,SO,,CA,,CA,,GAGA 2,
-Matt Segal,PG,,GA,,CA,,T,,GAGA 2,,TD,,GR1,,WA,
-Olivia Bocchieri,SO,,GR1,,SO,,A,,SUB,,RR,,FR/VB,,CA,
-Ori Gillai,PP,,CA,,SUB,,F,,HS,,MULTI,,BR,,PP,
-Paige Leban,SUB,,CA,,PG,,F,,SO,,SUB,,PG,,MULTI,
-Ryan Spence,GAGA 2,,PG,,HS,,,,RR,,GAGA 1,,SO,,SUB,
-Tommy Sah,CA,,WB,,HS,,,,FR/VB,,GAGA 2,,CA,,FR/VB,
-COUNSELORS: TUESDAY/THURSDAY,,,,,,,,,,,,,,,,
-Anna Kolpakova,,BR,,CA,,GAGA 2,,HS,,HS,,HS,,GAGA 1,,SO
-Avi Sanchez,,A&C,,A&C,,A&C,,A&C,,CA,,A&C,,A&C,,A&C
-Charlie Premo,,MULTI,,WB,,WB,,WB,,CA,,SO,,WA,,WB
-Ellie Westgate,,MULTI,,HS,,PG,,MULTI,,SO,,MULTI,,BR,,PG
-Emily Jacquemin,,WB,,MULTI,,WA,G,CA,,SO,,RR,,PP,,MULTI
-Eytan Goldhaber-Fiebert,,WA,,MULTI,,MULTI,A,CA,,BR,,PG,,WB,,CA
-Guy Robbins,,GR1,,WB,,HS,M,HS,,TD,,PG,,PG,,GAGA 1
-Khalil Qureshi,,WB,,HS,,WB,E,FR/VB,,PG,,WA,,CA,,PP
-Liam Gerber,,CA,,WA,,CA,,WA,,GAGA 2,,MULTI,,PG,,HS
-Millie Labaron,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT
-Parker McCabe,,RR,,FR/VB,,CA,,BR,,RR,,CA,,GR1,,PG
-Trey Calhoun,,PG,,RR,,PP,,GR1,,WB,,WB,,FR/VB,,GR1
-JUNIOR COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,,,,,,,,,
-Aditi Rairkar,MULTI,,CA,,WB,,,,WA,,HS,,PG,,GAGA 1,
-Amiya Garg,HS,,GAGA 1,,GAGA 2,,,,GAGA 1,,PP,,GAGA 1,,CA,
-Andrew Onodera,CA,,PP,,MULTI,,,,CA,,PG,,CA,,MULTI,
-Asher Darling,CT,,CT,,CT,,,,CT,,CT,,CT,,CT,
-Aylin Orens,SO,,FR/VB,,RR,,,,BR,,CA,,SUB,,WB,
-Carlos Acosta,FR/VB,,WB,,BR,,S,,PG,,BR,,RR,,RR,
-David Loza,RR,,SO,,GR1,,T,,CA,,GA,,PP,,HS,
-Einav Garten,HS,,RR,,GAGA 1,,A,,PP,,MULTI,,HS,,GR1,
-Eli Sobel,WA,,WA,,CA,,F,,GR1,,SO,,GA,,HS,
-Elise Darling,CA,,HS,,CA,,F,,WB,,FR/VB,,WB,,CA,
-Ethelle Bouvin,A&C,,A&C,,A&C,,,,A&C,,WA,,A&C,,A&C,
-Ilan Gerber,WB,,PG,,PP,,,,PG,,TD,,WB,,SO,
-Jenna Bergendahl,GA,,SO,,FR/VB,,,,MULTI,,SO,,GAGA 2,,GA,
-Nishka Gollamudi,MULTI,,HS,,SO,,,,HS,,CA,,MULTI,,SO,
-Sabrina Neal,PG,,MULTI,,WA,,,,WB,,HS,,HS,,PG,
-Tamara Rubinsky,GR1,,GAGA 2,,PG,,,,MULTI,,PG,,SO,,WB,
-JUNIOR COUNSELORS: TUESDAY/THURSDAY,,,,,,,,,,,,,,,,
-Abraham Paley,,GAGA 1,,GAGA 1,,FR/VB,,SO,,FR/VB,,FR/VB,,CA,,BR
-Carter Leban,,HS,,SO,,MULTI,,CA,,WB,,CA,,GAGA 2,,GAGA 2
-Ellie Katsav,,GAGA 2,,PG,,RR,,WB,,PP,,HS,,SO,,FR/VB
-Jonah Altschuler,,HS,,PP,,SO,G,MULTI,,MULTI,,CA,,WB,,MULTI
-Lilley Stryker,,SO,,GR1,,PG,A,PG,,CA,,PP,,HS,,CA
-Lizzy Moravick,,PG,,PG,,BR,M,PG,,WA,,GAGA 2,,CA,,RR
-Micaela Rubinsky,,PP,,BR,,GR1,E,GAGA 1,,GAGA 1,,BR,,RR,,WA
-Sahil Qureshi,,CA,,CA,,HS,,GAGA 2,,GR1,,GAGA 1,,MULTI,,HS
-Spencer Toland,,CA,,GAGA 2,,CA,,PP,,PG,,GR1,,HS,,WB
-Wes Calhoun,,FR/VB,,CA,,GAGA 1,,RR,,TD,,WB,,MULTI,,CA
+staff_name,M_1,T_1,W_1,TH_1,M_2,T_2,W_2,TH_2,M_3,T_3,W_3,TH_3,M_4,T_4,W_4,TH_4,M_5,T_5,W_5,TH_5,M_6,T_6,W_6,TH_6
+COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,,,,,,,,,,,,,,,,,
+Avi Sanchez,WA,,RR,,SO,,MULTI,,CA,,RR,,RR,,BR,,PG,,CA,,FR/VB,,SO,
+Cassie Hickinbotham,WB,,PG,,WB,,PG,,WB,,FR/VB,,CA,,SO,,GAGA 2,,HS,,PG,,PG,
+Jack Bucich,GAGA 1,,WA,,WA,,HS,,PG,,WB,,MULTI,,RR,,SO,,RR,,GR1,,RR,
+Jackson Dewberry,GR1,,WB,,GAGA 1,,CA,,MULTI,,SO,,CA,,HS,,MULTI,,CA,,MULTI,,CA,
+Matt Segal,CA,,PP,,CA,,SO,,MULTI,,CA,,GAGA 1,,GAGA 2,,CA,,HS,,CA,,HS,
+Olivia Bocchieri,SUB,,CA,,MULTI,,MULTI,,BR,,HS,,PG,,SUB,,SO,,PG,,HS,,FR/VB,
+Ori Gillai,SO,,GR1,,SUB,,FR/VB,,PP,,BR,,MULTI,,MULTI,,HS,,WA,,PG,,MULTI,
+Paige Leban,GAGA 2,,FR/VB,,GR1,,GAGA 1,,CA,,CA,,SO,,CA,,WB,,WB,,SUB,,MULTI,
+Ryan Spence,HS,,SO,,SO,,RR,,SO,,GR1,,SO,,CA,,BR,,MULTI,,SO,,GAGA 1,
+Tommy Sah,PG,,MULTI,,PP,,CA,,WA,,HS,,HS,,HS,,RR,,GR1,,MULTI,,CA,
+COUNSELORS: TUESDAY/THURSDAY,,,,,,,,,,,,,,,,,,,,,,,,
+Anna Kolpakova,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C
+Charlie Premo,,SO,,SO,,WB,,BR,,SUB,,WA,,MULTI,,HS,,SUB,,CA,,BR,,PG
+Ellie Westgate,,MULTI,,HS,,HS,,CA,,CA,,WB,,CA,,SO,,RR,,SUB,,CA,,WB
+Emily Jacquemin,,SO,,BR,,SUB,,SO,,WB,,PG,,HS,,SUB,,MULTI,,SO,,CA,,CA
+Eytan Goldhaber-Fiebert,,CA,,FR/VB,,CA,,MULTI,,WB,,MULTI,,PG,,GR1,,WB,,BR,,GR1,,RR
+Guy Robbins,,CA,,PG,,CA,,HS,,PG,,CA,,SO,,HS,,CA,,HS,,WA,,SO
+Khalil Qureshi,,WB,,HS,,BR,,SO,,MULTI,,SUB,,FR/VB,,SO,,PG,,MULTI,,MULTI,,FR/VB
+Liam Gerber,,GAGA 2,,GR1,,GAGA 1,,CA,,PP,,FR/VB,,GR1,,CA,,PG,,WA,,HS,,HS
+Millie Labaron,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT
+Parker McCabe,,HS,,PP,,SO,,MULTI,,FR/VB,,CA,,WB,,PG,,HS,,WB,,GAGA 2,,GAGA 1
+Trey Calhoun,,PP,,CA,,FR/VB,,PG,,GR1,,RR,,SO,,CA,,WA,,PG,,SUB,,CA
+JUNIOR COUNSELORS: MONDAY/WEDNESDAY,,,,,,,,,,,,,,,,,,,,,,,,
+Aditi Rairkar,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,,A&C,
+Amiya Garg,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,,CT,
+Andrew Onodera,FR/VB,,MULTI,,GAGA 2,,WB,,RR,,MULTI,,WA,,WB,,PG,,GAGA 2,,WA,,CA,
+Aylin Orens,CA,,GAGA 2,,CA,,CA,,GAGA 1,,SO,,GAGA 2,,PP,,GR1,,PP,,PP,,PG,
+Carlos Acosta,MULTI,,SUB,,MULTI,,PP,,CA,,WB,,BR,,FR/VB,,PP,,WB,,BR,,WB,
+David Loza,PG,,HS,,RR,,GR1,,HS,,GAGA 2,,GR1,,GAGA 1,,WA,,SO,,WB,,GAGA 2,
+Einav Garten,PP,,HS,,HS,,SUB,,GR1,,PP,,PG,,PG,,SUB,,FR/VB,,CA,,BR,
+Eli Sobel,BR,,PG,,HS,,WA,,HS,,PG,,PP,,SO,,FR/VB,,MULTI,,GAGA 2,,WA,
+Ethelle Bouvin,WB,,SO,,BR,,HS,,SUB,,PG,,WB,,PG,,HS,,SUB,,RR,,HS,
+Ilan Gerber,RR,,CA,,FR/VB,,SO,,GAGA 2,,SUB,,HS,,WB,,GAGA 1,,CA,,CA,,WB,
+Jenna Bergendahl,SO,,CA,,PG,,WB,,WB,,GAGA 1,,SUB,,GR1,,WB,,SO,,HS,,SO,
+Nishka Gollamudi,CA,,BR,,CA,,BR,,FR/VB,,MULTI,,WB,,WA,,MULTI,,GAGA 1,,WB,,GR1,
+Sabrina Neal,MULTI,,WB,,PG,,GAGA 2,,PG,,CA,,FR/VB,,MULTI,,CA,,PG,,SO,,SUB,
+Tamara Rubinsky,HS,,GAGA 1,,WB,,PG,,SO,,WA,,CA,,CA,,CA,,BR,,GAGA 1,,PP,
+JUNIOR COUNSELORS: TUESDAY/THURSDAY,,,,,,,,,,,,,,,,,,,,,,,,
+Abraham Paley,,GAGA 1,,CA,,RR,,PG,,CA,,SO,,WB,,FR/VB,,MULTI,,MULTI,,SO,,PG
+Asher Darling,,PG,,WB,,GAGA 2,,WA,,RR,,HS,,PG,,BR,,CA,,GAGA 1,,PG,,WA
+Carter Leban,,MULTI,,GAGA 2,,PP,,GR1,,GAGA 1,,PG,,WA,,PG,,SO,,SO,,PP,,CA
+Elise Darling,,WA,,RR,,CA,,PP,,CA,,WB,,GAGA 1,,CA,,SO,,HS,,PG,,MULTI
+Ellie Katsav,,RR,,GAGA 1,,SO,,WB,,BR,,SO,,CA,,MULTI,,PP,,GAGA 2,,FR/VB,,PP
+Jonah Altschuler,,CA,,SO,,WA,,HS,,HS,,MULTI,,CA,,WB,,BR,,PG,,MULTI,,SUB
+Lilley Stryker,,WB,,PG,,MULTI,,CA,,GAGA 2,,GAGA 2,,HS,,GAGA 2,,GAGA 2,,RR,,WB,,GR1
+Lizzy Moravick,,SUB,,SUB,,PG,,RR,,SO,,PP,,SUB,,PP,,WB,,WB,,RR,,HS
+Micaela Rubinsky,,FR/VB,,WA,,WB,,SUB,,SO,,GAGA 1,,PP,,MULTI,,GAGA 1,,PP,,WB,,SO
+Sahil Qureshi,,PG,,WB,,PG,,GAGA 2,,HS,,HS,,MULTI,,RR,,FR/VB,,CA,,CA,,WB
+Spencer Toland,,GR1,,CA,,HS,,FR/VB,,MULTI,,BR,,RR,,WB,,HS,,GR1,,SO,,BR
+Wes Calhoun,,BR,,MULTI,,MULTI,,GAGA 1,,WA,,GR1,,GAGA 2,,GAGA 1,,GR1,,FR/VB,,GAGA 1,,GAGA 2
+Yardenne Sternheim,,HS,,MULTI,,GR1,,WB,,PG,,CA,,BR,,WA,,CA,,CA,,HS,,MULTI

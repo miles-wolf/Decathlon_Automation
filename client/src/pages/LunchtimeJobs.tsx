@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/use-settings";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -152,6 +153,7 @@ const createDefaultSessionDefaults = (): SessionDefaults => ({
 });
 
 export default function LunchtimeJobs() {
+  const { settings } = useSettings();
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [activeWeek, setActiveWeek] = useState(1);
   const [configTab, setConfigTab] = useState<string>("full-session");
@@ -165,12 +167,32 @@ export default function LunchtimeJobs() {
   const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
   const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [numberOfWeeks, setNumberOfWeeks] = useState(1);
-  const [weeksInputValue, setWeeksInputValue] = useState("1");
+  const [numberOfWeeks, setNumberOfWeeks] = useState(settings.defaultNumberOfWeeks);
+  const [weeksInputValue, setWeeksInputValue] = useState(settings.defaultNumberOfWeeks.toString());
   const [targetStaffOpen, setTargetStaffOpen] = useState(false);
   const [variationFilter, setVariationFilter] = useState<'below' | 'all'>('below');
+  const [hasAppliedDefaults, setHasAppliedDefaults] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
+  
+  // Apply default session and weeks from settings on mount
+  useEffect(() => {
+    if (!hasAppliedDefaults) {
+      if (settings.defaultSessionId !== null) {
+        setSelectedSessionId(settings.defaultSessionId);
+      }
+      if (settings.defaultNumberOfWeeks > 1) {
+        setNumberOfWeeks(settings.defaultNumberOfWeeks);
+        setWeeksInputValue(settings.defaultNumberOfWeeks.toString());
+        const newConfigs: WeekConfig[] = [];
+        for (let i = 1; i <= settings.defaultNumberOfWeeks; i++) {
+          newConfigs.push(createDefaultWeekConfig(i));
+        }
+        setWeekConfigs(newConfigs);
+      }
+      setHasAppliedDefaults(true);
+    }
+  }, [hasAppliedDefaults]);
   
   // Refresh data mutation - clears cache and re-fetches all data
   const refreshDataMutation = useMutation({

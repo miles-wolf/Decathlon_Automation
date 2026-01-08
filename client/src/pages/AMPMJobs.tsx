@@ -3,10 +3,11 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/use-settings";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -81,6 +82,7 @@ interface CustomStaff {
 }
 
 export default function AMPMJobs() {
+  const { settings } = useSettings();
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [hardcodedAssignments, setHardcodedAssignments] = useState<JobAssignment[]>([]);
   const [customAssignments, setCustomAssignments] = useState<JobAssignment[]>([]);
@@ -98,8 +100,17 @@ export default function AMPMJobs() {
   const [customMaxOverrides, setCustomMaxOverrides] = useState<Record<number, boolean>>({});
   const [pendingExcludeStaff, setPendingExcludeStaff] = useState<number | null>(null);
   const [showExcludeConfirm, setShowExcludeConfirm] = useState(false);
+  const [hasAppliedDefaults, setHasAppliedDefaults] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
+  
+  // Apply default session from settings on mount
+  useEffect(() => {
+    if (!hasAppliedDefaults && settings.defaultSessionId !== null) {
+      setSelectedSessionId(settings.defaultSessionId);
+      setHasAppliedDefaults(true);
+    }
+  }, [settings.defaultSessionId, hasAppliedDefaults]);
 
   // Fetch external sessions
   const { data: externalSessions = [], isLoading: sessionsLoading } = useQuery<ExternalSession[]>({

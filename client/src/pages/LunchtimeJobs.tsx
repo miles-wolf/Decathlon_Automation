@@ -2373,6 +2373,7 @@ export default function LunchtimeJobs() {
                           <Button
                             variant="outline"
                             size="sm"
+                            className="focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1 focus:border-[#E63946]"
                             onClick={() => {
                               const headers = ["week", "day", "job_name", "job_code", "staff_name", "staff_id"];
                               const csvContent = [
@@ -2401,6 +2402,7 @@ export default function LunchtimeJobs() {
                           <Button
                             variant="outline"
                             size="sm"
+                            className="focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1 focus:border-[#E63946]"
                             onClick={handleDownloadConfig}
                             data-testid="button-download-config-bottom"
                           >
@@ -2408,8 +2410,8 @@ export default function LunchtimeJobs() {
                             Download Config
                           </Button>
                           <Button
-                            variant="outline"
                             size="sm"
+                            className="bg-[#47c8f5] hover:bg-[#3bb8e5] text-white focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1"
                             onClick={() => {
                               const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
                               window.open(url, "_blank");

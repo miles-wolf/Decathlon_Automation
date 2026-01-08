@@ -1381,7 +1381,7 @@ export default function LunchtimeJobs() {
           {selectedSessionId && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <Settings className="h-5 w-5" />
@@ -1391,29 +1391,28 @@ export default function LunchtimeJobs() {
                       Set session-wide defaults or customize individual weeks to specify staff game days, tie dye days and staff, partial sessions for staff and more
                     </CardDescription>
                   </div>
+                  <div className="shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      data-testid="button-upload-config-top"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload Config
+                    </Button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleUploadConfig}
+                      accept=".json"
+                      className="hidden"
+                      data-testid="input-upload-config"
+                    />
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Upload Config at top of configuration */}
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    data-testid="button-upload-config-top"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Config
-                  </Button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleUploadConfig}
-                    accept=".json"
-                    className="hidden"
-                    data-testid="input-upload-config"
-                  />
-                </div>
 
                 <Tabs value={configTab} onValueChange={handleConfigTabChange}>
                   <TabsList className="mb-4 flex-nowrap overflow-x-auto overflow-y-hidden w-full scrollbar-thin inline-flex justify-start">

@@ -12,114 +12,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 def validate_group_coverage(all_week_assignments, session_id, conn):
     """
-    Validate that each group has at least one staff member working each day.
+    Combined validation that checks:
+    1. Each group has at least one staff member working each day (not all staying back)
+    2. Each group has at least one staff member staying back each day (not all working)
     
     Returns dict with:
         - passed: bool
         - message: str
-        - issues: list of issue dicts (if any)
-    """
-    import pandas as pd
-    
-    # Get all groups for this session
-    sql_groups = f"""
-    SELECT DISTINCT sts.group_id
-    FROM camp.staff_to_session AS sts
-    WHERE sts.session_id = {session_id}
-      AND sts.role_id IN (1005, 1006)
-    ORDER BY sts.group_id
-    """
-    df_groups = pd.read_sql(sql_groups, conn)
-    all_groups = set(df_groups['group_id'].tolist())
-    
-    if not all_groups:
-        return {
-            'passed': True,
-            'message': 'No groups found to validate',
-            'issues': []
-        }
-    
-    # Days to check (Monday through Thursday, Friday is never used)
-    days_to_check = ['monday', 'tuesday', 'wednesday', 'thursday']
-    
-    group_coverage_issues = []
-    
-    for week_num, df_assignments in all_week_assignments:
-        if df_assignments is None or len(df_assignments) == 0:
-            # No assignments for this week - all groups uncovered on all days
-            for day in days_to_check:
-                for group_id in all_groups:
-                    group_coverage_issues.append({
-                        'week': int(week_num),
-                        'day': day.capitalize(),
-                        'group_id': int(group_id)
-                    })
-            continue
-        
-        # Get day column name
-        day_col = 'day_name' if 'day_name' in df_assignments.columns else 'day'
-        job_col = 'job_id' if 'job_id' in df_assignments.columns else 'lunch_job_id'
-        
-        for day in days_to_check:
-            day_assignments = df_assignments[df_assignments[day_col].str.lower() == day.lower()]
-            
-            # Check if THIS SPECIFIC DAY has staff game (job_id 1100)
-            if job_col in df_assignments.columns:
-                is_staff_game_day = (day_assignments[job_col] == 1100).any() if len(day_assignments) > 0 else False
-                if is_staff_game_day:
-                    # Staff game day - all staff work together, skip coverage check
-                    continue
-            
-            if len(day_assignments) == 0:
-                # No assignments this day - all groups uncovered
-                for group_id in all_groups:
-                    group_coverage_issues.append({
-                        'week': int(week_num),
-                        'day': day.capitalize(),
-                        'group_id': int(group_id)
-                    })
-                continue
-            
-            # Get unique groups that have assignments this day
-            if 'group_id' not in day_assignments.columns:
-                continue
-                
-            assigned_groups = set(day_assignments['group_id'].dropna().unique())
-            
-            # Find groups with no coverage
-            missing_groups = all_groups - assigned_groups
-            
-            if missing_groups:
-                for group_id in missing_groups:
-                    group_coverage_issues.append({
-                        'week': int(week_num),
-                        'day': day.capitalize(),
-                        'group_id': int(group_id)
-                    })
-    
-    if group_coverage_issues:
-        return {
-            'passed': False,
-            'message': f'Found {len(group_coverage_issues)} group coverage issues',
-            'issues': group_coverage_issues
-        }
-    else:
-        return {
-            'passed': True,
-            'message': 'All groups have at least one staff member working each day',
-            'issues': []
-        }
-
-
-def validate_group_supervision(all_week_assignments, session_id, conn):
-    """
-    Validate that NOT all staff from any group are working on the same day.
-    At least one staff member must stay back with the kids.
-    
-    Returns dict with:
-        - passed: bool
-        - message: str
-        - issues: list of issue dicts (if any)
+        - noWorkingIssues: list of groups with no one working
+        - allWorkingIssues: list of groups with everyone working (no one staying back)
     """
     import pandas as pd
     
@@ -137,20 +38,32 @@ def validate_group_supervision(all_week_assignments, session_id, conn):
     if df_staff_counts.empty:
         return {
             'passed': True,
-            'message': 'No groups found to validate supervision',
-            'issues': []
+            'message': 'No groups found to validate',
+            'noWorkingIssues': [],
+            'allWorkingIssues': []
         }
     
     # Create lookup dict: group_id -> total staff count
     staff_per_group = dict(zip(df_staff_counts['group_id'], df_staff_counts['staff_count']))
+    all_groups = set(staff_per_group.keys())
     
-    # Days to check (Monday through Thursday)
+    # Days to check (Monday through Thursday, Friday is never used)
     days_to_check = ['monday', 'tuesday', 'wednesday', 'thursday']
     
-    supervision_issues = []
+    no_working_issues = []  # Groups with no staff working
+    all_working_issues = []  # Groups with all staff working (no one staying back)
     
     for week_num, df_assignments in all_week_assignments:
         if df_assignments is None or len(df_assignments) == 0:
+            # No assignments for this week - all groups have no one working
+            for day in days_to_check:
+                for group_id in all_groups:
+                    no_working_issues.append({
+                        'week': int(week_num),
+                        'day': day.capitalize(),
+                        'group_id': int(group_id),
+                        'issue_type': 'no_working'
+                    })
             continue
         
         # Get column names
@@ -164,38 +77,65 @@ def validate_group_supervision(all_week_assignments, session_id, conn):
             if job_col in df_assignments.columns:
                 is_staff_game_day = (day_assignments[job_col] == 1100).any() if len(day_assignments) > 0 else False
                 if is_staff_game_day:
-                    # Staff game day - all staff work together, skip supervision check
+                    # Staff game day - all staff work together, skip validation
                     continue
             
-            if len(day_assignments) == 0 or 'group_id' not in day_assignments.columns:
+            if len(day_assignments) == 0:
+                # No assignments this day - all groups have no one working
+                for group_id in all_groups:
+                    no_working_issues.append({
+                        'week': int(week_num),
+                        'day': day.capitalize(),
+                        'group_id': int(group_id),
+                        'issue_type': 'no_working'
+                    })
+                continue
+            
+            if 'group_id' not in day_assignments.columns:
                 continue
             
             # Count assigned staff per group for this day
             assigned_per_group = day_assignments.groupby('group_id')['staff_id'].nunique().to_dict()
             
-            # Check if all staff from any group are working
-            for group_id, assigned_count in assigned_per_group.items():
+            # Check each group
+            for group_id in all_groups:
+                assigned_count = assigned_per_group.get(group_id, 0)
                 total_count = staff_per_group.get(group_id, 0)
-                if total_count > 0 and assigned_count >= total_count:
-                    supervision_issues.append({
+                
+                if assigned_count == 0:
+                    # No one from this group is working
+                    no_working_issues.append({
+                        'week': int(week_num),
+                        'day': day.capitalize(),
+                        'group_id': int(group_id),
+                        'issue_type': 'no_working'
+                    })
+                elif total_count > 0 and assigned_count >= total_count:
+                    # Everyone from this group is working (no one staying back)
+                    all_working_issues.append({
                         'week': int(week_num),
                         'day': day.capitalize(),
                         'group_id': int(group_id),
                         'assigned': int(assigned_count),
-                        'total': int(total_count)
+                        'total': int(total_count),
+                        'issue_type': 'all_working'
                     })
     
-    if supervision_issues:
+    total_issues = len(no_working_issues) + len(all_working_issues)
+    
+    if total_issues > 0:
         return {
             'passed': False,
-            'message': f'Found {len(supervision_issues)} groups with no staff staying back',
-            'issues': supervision_issues
+            'message': f'Found {total_issues} group coverage issues',
+            'noWorkingIssues': no_working_issues,
+            'allWorkingIssues': all_working_issues
         }
     else:
         return {
             'passed': True,
-            'message': 'All groups have at least one staff member staying with kids',
-            'issues': []
+            'message': 'All groups have staff working and staying back on any given day',
+            'noWorkingIssues': [],
+            'allWorkingIssues': []
         }
 
 
@@ -246,9 +186,8 @@ def main():
                     all_assignments.append(df)
                 week_num += 1
         
-        # Perform group coverage validation
-        coverage_result = {'passed': True, 'message': 'No assignments to validate', 'issues': []}
-        supervision_result = {'passed': True, 'message': 'No assignments to validate', 'issues': []}
+        # Perform group coverage validation (combined: checks both working and staying back)
+        coverage_result = {'passed': True, 'message': 'No assignments to validate', 'noWorkingIssues': [], 'allWorkingIssues': []}
         
         if all_week_assignments_raw and 'conn' in output:
             try:
@@ -260,18 +199,7 @@ def main():
                 print(f"Group coverage validation: {coverage_result['message']}", file=sys.stderr)
             except Exception as ve:
                 print(f"Warning: Group coverage validation failed: {ve}", file=sys.stderr)
-                coverage_result = {'passed': True, 'message': 'Validation skipped due to error', 'issues': []}
-            
-            try:
-                supervision_result = validate_group_supervision(
-                    all_week_assignments_raw, 
-                    session_id, 
-                    output['conn']
-                )
-                print(f"Group supervision validation: {supervision_result['message']}", file=sys.stderr)
-            except Exception as ve:
-                print(f"Warning: Group supervision validation failed: {ve}", file=sys.stderr)
-                supervision_result = {'passed': True, 'message': 'Validation skipped due to error', 'issues': []}
+                coverage_result = {'passed': True, 'message': 'Validation skipped due to error', 'noWorkingIssues': [], 'allWorkingIssues': []}
         
         if all_assignments:
             df_combined = pd.concat(all_assignments, ignore_index=True)
@@ -301,8 +229,7 @@ def main():
         output_data = {
             'assignments': results,
             'validation': {
-                'groupCoverage': coverage_result,
-                'groupSupervision': supervision_result
+                'groupCoverage': coverage_result
             }
         }
         print(json.dumps(output_data))

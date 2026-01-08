@@ -111,35 +111,31 @@ interface AssignmentResult {
   week?: number;
 }
 
-interface GroupCoverageIssue {
+interface NoWorkingIssue {
   week: number;
   day: string;
   group_id: number;
+  issue_type: 'no_working';
 }
 
-interface GroupSupervisionIssue {
+interface AllWorkingIssue {
   week: number;
   day: string;
   group_id: number;
   assigned: number;
   total: number;
+  issue_type: 'all_working';
 }
 
 interface GroupCoverageValidation {
   passed: boolean;
   message: string;
-  issues: GroupCoverageIssue[];
-}
-
-interface GroupSupervisionValidation {
-  passed: boolean;
-  message: string;
-  issues: GroupSupervisionIssue[];
+  noWorkingIssues: NoWorkingIssue[];
+  allWorkingIssues: AllWorkingIssue[];
 }
 
 interface ValidationResult {
   groupCoverage: GroupCoverageValidation;
-  groupSupervision?: GroupSupervisionValidation;
 }
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday"];
@@ -1205,19 +1201,18 @@ export default function LunchtimeJobs() {
       if (validation) {
         setValidationResult(validation);
         
-        // Log validation results
+        // Log validation result
         if (validation.groupCoverage) {
           if (validation.groupCoverage.passed) {
             logStream.success(validation.groupCoverage.message);
           } else {
             logStream.warn(`Validation warning: ${validation.groupCoverage.message}`);
-          }
-        }
-        if (validation.groupSupervision) {
-          if (validation.groupSupervision.passed) {
-            logStream.success(validation.groupSupervision.message);
-          } else {
-            logStream.warn(`Supervision warning: ${validation.groupSupervision.message}`);
+            if (validation.groupCoverage.noWorkingIssues.length > 0) {
+              logStream.warn(`Groups with no staff working: ${validation.groupCoverage.noWorkingIssues.length} issues`);
+            }
+            if (validation.groupCoverage.allWorkingIssues.length > 0) {
+              logStream.warn(`Groups with all staff working: ${validation.groupCoverage.allWorkingIssues.length} issues`);
+            }
           }
         }
       }
@@ -1247,14 +1242,11 @@ export default function LunchtimeJobs() {
           title: "Success",
           description: data.message || "Assignments generated successfully",
         });
-      } else if (validation && (!validation.groupCoverage.passed || (validation.groupSupervision && !validation.groupSupervision.passed))) {
+      } else if (validation && !validation.groupCoverage.passed) {
         // Show validation warnings even with no assignments
-        const warnings = [];
-        if (!validation.groupCoverage.passed) warnings.push(validation.groupCoverage.message);
-        if (validation.groupSupervision && !validation.groupSupervision.passed) warnings.push(validation.groupSupervision.message);
         toast({
           title: "Warning",
-          description: warnings.join(". "),
+          description: validation.groupCoverage.message,
           variant: "destructive",
         });
       }
@@ -2288,90 +2280,6 @@ export default function LunchtimeJobs() {
                           </div>
                         </div>
 
-                        {/* Group Coverage Validation */}
-                        {validationResult?.groupCoverage && (
-                          <div className={`border rounded-lg p-4 ${validationResult.groupCoverage.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              {validationResult.groupCoverage.passed ? (
-                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
-                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">!</span>
-                                </div>
-                              )}
-                              <h4 className="font-medium">Group Coverage Validation</h4>
-                            </div>
-                            <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                              {validationResult.groupCoverage.message}
-                            </p>
-                            {!validationResult.groupCoverage.passed && validationResult.groupCoverage.issues.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-amber-500/30">
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  Groups without staff coverage:
-                                </p>
-                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                                  {validationResult.groupCoverage.issues.slice(0, 20).map((issue, idx) => (
-                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                      Week {issue.week} • {issue.day} • Group {issue.group_id}
-                                    </Badge>
-                                  ))}
-                                  {validationResult.groupCoverage.issues.length > 20 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{validationResult.groupCoverage.issues.length - 20} more
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Group Supervision Validation */}
-                        {validationResult?.groupSupervision && (
-                          <div className={`border rounded-lg p-4 ${validationResult.groupSupervision.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              {validationResult.groupSupervision.passed ? (
-                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
-                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">!</span>
-                                </div>
-                              )}
-                              <h4 className="font-medium">Group Supervision Validation</h4>
-                            </div>
-                            <p className={`text-sm ${validationResult.groupSupervision.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                              {validationResult.groupSupervision.message}
-                            </p>
-                            {!validationResult.groupSupervision.passed && validationResult.groupSupervision.issues.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-amber-500/30">
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  Groups with all staff assigned (no one staying back):
-                                </p>
-                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                                  {validationResult.groupSupervision.issues.slice(0, 20).map((issue, idx) => (
-                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                      Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total} assigned)
-                                    </Badge>
-                                  ))}
-                                  {validationResult.groupSupervision.issues.length > 20 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{validationResult.groupSupervision.issues.length - 20} more
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
                         {/* Job Target Overview - Collapsible */}
                         <Collapsible open={targetStaffOpen} onOpenChange={setTargetStaffOpen}>
                           <div className="border rounded-lg p-4">
@@ -2404,134 +2312,189 @@ export default function LunchtimeJobs() {
                         </Collapsible>
 
                         {/* Staffing Variations - Days that differ from target */}
-                        <div className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <h4 className="font-medium">Staffing Variations</h4>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Days where staffing differs from the target
-                              </p>
-                            </div>
-                            <Select value={variationFilter} onValueChange={(v) => setVariationFilter(v as 'below' | 'all')}>
-                              <SelectTrigger className="w-[160px]" data-testid="select-variation-filter">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="below">Below Target</SelectItem>
-                                <SelectItem value="all">All Variations</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {(() => {
-                            // Build variations comparing each week/day to target (not average)
-                            // Exclude Tie Dye jobs from variations
-                            const variations: Array<{
-                              jobName: string;
-                              week: number;
-                              day: string;
-                              count: number;
-                              target: number;
-                              type: 'above' | 'below';
-                            }> = [];
+                        {(() => {
+                          // Build variations comparing each week/day to target (not average)
+                          // Exclude Tie Dye jobs from variations
+                          const variations: Array<{
+                            jobName: string;
+                            week: number;
+                            day: string;
+                            count: number;
+                            target: number;
+                            type: 'above' | 'below';
+                          }> = [];
+                          
+                          for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
+                            // Skip Tie Dye jobs
+                            if (jobName.toLowerCase().includes('tie dye')) continue;
+                            if (stats.normalStaff === null) continue;
                             
-                            for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
-                              // Skip Tie Dye jobs
-                              if (jobName.toLowerCase().includes('tie dye')) continue;
-                              if (stats.normalStaff === null) continue;
+                            for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
+                              const [weekStr, day] = weekDayKey.split('-');
+                              const week = parseInt(weekStr);
                               
-                              for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
-                                const [weekStr, day] = weekDayKey.split('-');
-                                const week = parseInt(weekStr);
-                                
-                                if (count > stats.normalStaff) {
-                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'above' });
-                                } else if (count < stats.normalStaff) {
-                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'below' });
-                                }
+                              if (count > stats.normalStaff) {
+                                variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'above' });
+                              } else if (count < stats.normalStaff) {
+                                variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'below' });
                               }
                             }
-                            
-                            // Filter based on selection
-                            const filteredVariations = variationFilter === 'below' 
-                              ? variations.filter(v => v.type === 'below')
-                              : variations;
-                            
-                            // Sort by week, then day, then job name
-                            filteredVariations.sort((a, b) => {
-                              if (a.week !== b.week) return a.week - b.week;
-                              const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
-                              if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
-                                return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
-                              }
-                              return a.jobName.localeCompare(b.jobName);
-                            });
-                            
-                            if (filteredVariations.length === 0) {
-                              return (
-                                <p className="text-sm text-muted-foreground italic">
+                          }
+                          
+                          // Check if there are any below-target variations
+                          const hasBelowTarget = variations.some(v => v.type === 'below');
+                          
+                          // Filter based on selection
+                          const filteredVariations = variationFilter === 'below' 
+                            ? variations.filter(v => v.type === 'below')
+                            : variations;
+                          
+                          // Sort by week, then day, then job name
+                          filteredVariations.sort((a, b) => {
+                            if (a.week !== b.week) return a.week - b.week;
+                            const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
+                            if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
+                              return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+                            }
+                            return a.jobName.localeCompare(b.jobName);
+                          });
+                          
+                          return (
+                            <div className={`border rounded-lg p-4 ${hasBelowTarget ? 'border-amber-500/50 bg-amber-500/5' : 'border-green-500/50 bg-green-500/5'}`}>
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  {hasBelowTarget ? (
+                                    <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                      <span className="text-white text-xs font-bold">!</span>
+                                    </div>
+                                  ) : (
+                                    <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                      <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <h4 className="font-medium">Staffing Variations</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                      Days where staffing differs from the target
+                                    </p>
+                                  </div>
+                                </div>
+                                <Select value={variationFilter} onValueChange={(v) => setVariationFilter(v as 'below' | 'all')}>
+                                  <SelectTrigger className="w-[160px]" data-testid="select-variation-filter">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="below">Below Target</SelectItem>
+                                    <SelectItem value="all">All Variations</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {filteredVariations.length === 0 ? (
+                                <p className={`text-sm ${hasBelowTarget ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
                                   {variationFilter === 'below' 
                                     ? 'No jobs are below target staffing levels.'
                                     : 'No variations found. All days match the target staffing levels.'}
                                 </p>
-                              );
-                            }
-                            
-                            return (
-                              <div className="space-y-2 max-h-64 overflow-auto">
-                                {filteredVariations.map((v, idx) => (
-                                  <div key={idx} className="flex items-center gap-2 text-sm">
-                                    <Badge 
-                                      variant="outline" 
-                                      className={v.type === 'above' 
-                                        ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
-                                        : 'border-blue-500 text-blue-700 dark:text-blue-400'}
-                                    >
-                                      Wk{v.week} {v.day.charAt(0).toUpperCase()}{v.day.slice(1, 3)}
-                                    </Badge>
-                                    <span className="text-muted-foreground">
-                                      {v.jobName}: <strong>{v.count}</strong> 
-                                      {v.type === 'above' ? ' ↑' : ' ↓'} (target: {v.target})
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                          {variationFilter === 'all' && (
-                            <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
-                                Above target
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
-                                Below target
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Same-Group Warnings */}
-                        {jobDayStats.sameGroupWarnings.length > 0 && (
-                          <div className="border border-yellow-500 rounded-lg p-4 bg-yellow-50 dark:bg-yellow-950/20">
-                            <h4 className="font-medium mb-2 text-yellow-700 dark:text-yellow-400">
-                              Same Group on Same Day Warning
-                            </h4>
-                            <p className="text-xs text-muted-foreground mb-3">
-                              All staff from these groups are working on the same day (excluding Staff Game days):
-                            </p>
-                            <div className="space-y-2">
-                              {jobDayStats.sameGroupWarnings.map((warning, idx) => (
-                                <div key={idx} className="flex items-center gap-2 text-sm">
-                                  <Badge variant="outline" className="border-yellow-500">
-                                    Week {warning.week} {warning.day.charAt(0).toUpperCase() + warning.day.slice(1)}
-                                  </Badge>
-                                  <span className="text-yellow-700 dark:text-yellow-400">
-                                    Group {warning.groupId}: {warning.staffNames.join(", ")}
+                              ) : (
+                                <div className="space-y-2 max-h-64 overflow-auto">
+                                  {filteredVariations.map((v, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 text-sm">
+                                      <Badge 
+                                        variant="outline" 
+                                        className={v.type === 'above' 
+                                          ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
+                                          : 'border-blue-500 text-blue-700 dark:text-blue-400'}
+                                      >
+                                        Wk{v.week} {v.day.charAt(0).toUpperCase()}{v.day.slice(1, 3)}
+                                      </Badge>
+                                      <span className="text-muted-foreground">
+                                        {v.jobName}: <strong>{v.count}</strong> 
+                                        {v.type === 'above' ? ' ↑' : ' ↓'} (target: {v.target})
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {variationFilter === 'all' && (
+                                <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
+                                    Above target
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
+                                    Below target
                                   </span>
                                 </div>
-                              ))}
+                              )}
                             </div>
+                          );
+                        })()}
+
+                        {/* Group Coverage Validation - Combined (no working & all working checks) */}
+                        {validationResult?.groupCoverage && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupCoverage.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupCoverage.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Coverage Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupCoverage.message}
+                            </p>
+                            {!validationResult.groupCoverage.passed && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30 space-y-3">
+                                {validationResult.groupCoverage.noWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with no staff working:
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.noWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id}
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.noWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.noWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {validationResult.groupCoverage.allWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with all staff working (no one staying back):
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.allWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total})
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.allWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.allWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -2611,63 +2574,46 @@ export default function LunchtimeJobs() {
                             <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
                               {validationResult.groupCoverage.message}
                             </p>
-                            {!validationResult.groupCoverage.passed && validationResult.groupCoverage.issues.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-amber-500/30">
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  Groups without staff coverage:
-                                </p>
-                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                                  {validationResult.groupCoverage.issues.slice(0, 20).map((issue, idx) => (
-                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                      Week {issue.week} • {issue.day} • Group {issue.group_id}
-                                    </Badge>
-                                  ))}
-                                  {validationResult.groupCoverage.issues.length > 20 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{validationResult.groupCoverage.issues.length - 20} more
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {validationResult?.groupSupervision && (
-                          <div className={`border rounded-lg p-4 ${validationResult.groupSupervision.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              {validationResult.groupSupervision.passed ? (
-                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
-                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">!</span>
-                                </div>
-                              )}
-                              <h4 className="font-medium">Group Supervision Validation</h4>
-                            </div>
-                            <p className={`text-sm ${validationResult.groupSupervision.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                              {validationResult.groupSupervision.message}
-                            </p>
-                            {!validationResult.groupSupervision.passed && validationResult.groupSupervision.issues.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-amber-500/30">
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  Groups with all staff assigned (no one staying back):
-                                </p>
-                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                                  {validationResult.groupSupervision.issues.slice(0, 20).map((issue, idx) => (
-                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                      Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total} assigned)
-                                    </Badge>
-                                  ))}
-                                  {validationResult.groupSupervision.issues.length > 20 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{validationResult.groupSupervision.issues.length - 20} more
-                                    </Badge>
-                                  )}
-                                </div>
+                            {!validationResult.groupCoverage.passed && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30 space-y-3">
+                                {validationResult.groupCoverage.noWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with no staff working:
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.noWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id}
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.noWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.noWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {validationResult.groupCoverage.allWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with all staff working (no one staying back):
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.allWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total})
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.allWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.allWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

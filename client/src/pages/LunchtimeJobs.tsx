@@ -1485,7 +1485,7 @@ export default function LunchtimeJobs() {
                             <div className="text-left">
                               <span className="font-medium">Hardcoded Job Assignments</span>
                               <p className="text-xs text-muted-foreground font-normal">
-                                Staff assigned to specific jobs for all days of all weeks
+                                Assign staff to specific jobs for all weeks on their scheduled work days
                               </p>
                             </div>
                           </div>

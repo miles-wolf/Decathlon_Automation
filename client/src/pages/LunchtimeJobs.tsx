@@ -139,6 +139,8 @@ export default function LunchtimeJobs() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [numberOfWeeks, setNumberOfWeeks] = useState(1);
   const [weeksInputValue, setWeeksInputValue] = useState("1");
+  const [targetStaffOpen, setTargetStaffOpen] = useState(false);
+  const [variationFilter, setVariationFilter] = useState<'below' | 'all'>('below');
   const { toast } = useToast();
   const logStream = useLogStream();
   
@@ -2132,25 +2134,6 @@ export default function LunchtimeJobs() {
                     <Play className="h-4 w-4 mr-2" />
                     {isGenerating ? "Generating..." : "Generate Assignments"}
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleDownloadConfig}
-                    data-testid="button-download-config"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Config
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
-                      window.open(url, "_blank");
-                    }}
-                    data-testid="button-view-sheets"
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View Google Sheet
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -2223,34 +2206,59 @@ export default function LunchtimeJobs() {
                           </div>
                         </div>
 
-                        {/* Job Target Overview */}
-                        <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Target Staff per Job</h4>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Normal staff assigned per day for each job
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(jobDayStats.byJob)
-                              .sort((a, b) => a[0].localeCompare(b[0]))
-                              .map(([jobName, stats]) => (
-                                <div key={jobName} className="flex items-center gap-1 text-sm">
-                                  <span className="text-muted-foreground">{jobName}:</span>
-                                  <Badge variant="outline">
-                                    {stats.normalStaff !== null ? stats.normalStaff : '-'}
-                                  </Badge>
+                        {/* Job Target Overview - Collapsible */}
+                        <Collapsible open={targetStaffOpen} onOpenChange={setTargetStaffOpen}>
+                          <div className="border rounded-lg p-4">
+                            <CollapsibleTrigger asChild>
+                              <button className="flex items-center justify-between w-full text-left">
+                                <div>
+                                  <h4 className="font-medium">Target Staff per Job</h4>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Normal staff assigned per day for each job
+                                  </p>
                                 </div>
-                              ))}
+                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${targetStaffOpen ? 'rotate-180' : ''}`} />
+                              </button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
+                                {Object.entries(jobDayStats.byJob)
+                                  .sort((a, b) => a[0].localeCompare(b[0]))
+                                  .map(([jobName, stats]) => (
+                                    <div key={jobName} className="flex items-center gap-1 text-sm">
+                                      <span className="text-muted-foreground">{jobName}:</span>
+                                      <Badge variant="outline">
+                                        {stats.normalStaff !== null ? stats.normalStaff : '-'}
+                                      </Badge>
+                                    </div>
+                                  ))}
+                              </div>
+                            </CollapsibleContent>
                           </div>
-                        </div>
+                        </Collapsible>
 
                         {/* Staffing Variations - Days that differ from target */}
                         <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Staffing Variations</h4>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Days where staffing differs from the target number for a job or staff from a particular group aren't split correctly
-                          </p>
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <h4 className="font-medium">Staffing Variations</h4>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Days where staffing differs from the target (excludes Tie Dye)
+                              </p>
+                            </div>
+                            <Select value={variationFilter} onValueChange={(v) => setVariationFilter(v as 'below' | 'all')}>
+                              <SelectTrigger className="w-[160px]" data-testid="select-variation-filter">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="below">Below Target</SelectItem>
+                                <SelectItem value="all">All Variations</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                           {(() => {
                             // Build variations comparing each week/day to target (not average)
+                            // Exclude Tie Dye jobs from variations
                             const variations: Array<{
                               jobName: string;
                               week: number;
@@ -2261,6 +2269,8 @@ export default function LunchtimeJobs() {
                             }> = [];
                             
                             for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
+                              // Skip Tie Dye jobs
+                              if (jobName.toLowerCase().includes('tie dye')) continue;
                               if (stats.normalStaff === null) continue;
                               
                               for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
@@ -2275,8 +2285,13 @@ export default function LunchtimeJobs() {
                               }
                             }
                             
+                            // Filter based on selection
+                            const filteredVariations = variationFilter === 'below' 
+                              ? variations.filter(v => v.type === 'below')
+                              : variations;
+                            
                             // Sort by week, then day, then job name
-                            variations.sort((a, b) => {
+                            filteredVariations.sort((a, b) => {
                               if (a.week !== b.week) return a.week - b.week;
                               const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
                               if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
@@ -2285,17 +2300,19 @@ export default function LunchtimeJobs() {
                               return a.jobName.localeCompare(b.jobName);
                             });
                             
-                            if (variations.length === 0) {
+                            if (filteredVariations.length === 0) {
                               return (
                                 <p className="text-sm text-muted-foreground italic">
-                                  No variations found. All days match the target staffing levels.
+                                  {variationFilter === 'below' 
+                                    ? 'No jobs are below target staffing levels.'
+                                    : 'No variations found. All days match the target staffing levels.'}
                                 </p>
                               );
                             }
                             
                             return (
                               <div className="space-y-2 max-h-64 overflow-auto">
-                                {variations.map((v, idx) => (
+                                {filteredVariations.map((v, idx) => (
                                   <div key={idx} className="flex items-center gap-2 text-sm">
                                     <Badge 
                                       variant="outline" 
@@ -2314,16 +2331,18 @@ export default function LunchtimeJobs() {
                               </div>
                             );
                           })()}
-                          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
-                              Above target
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
-                              Below target
-                            </span>
-                          </div>
+                          {variationFilter === 'all' && (
+                            <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
+                                Above target
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
+                                Below target
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Same-Group Warnings */}
@@ -2350,7 +2369,7 @@ export default function LunchtimeJobs() {
                           </div>
                         )}
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -2377,7 +2396,28 @@ export default function LunchtimeJobs() {
                             data-testid="button-download-csv"
                           >
                             <Download className="h-4 w-4 mr-2" />
-                            Download CSV
+                            Download Output CSV
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownloadConfig}
+                            data-testid="button-download-config-bottom"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Config
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
+                              window.open(url, "_blank");
+                            }}
+                            data-testid="button-view-sheets-bottom"
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            View Google Sheet
                           </Button>
                         </div>
                       </>

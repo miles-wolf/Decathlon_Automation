@@ -605,13 +605,9 @@ export default function AMPMJobs() {
           throw new Error("Invalid configuration file format");
         }
 
-        if (config.sessionId !== selectedSessionId) {
-          toast({
-            title: "Session Mismatch",
-            description: `Configuration is for session ${config.sessionId}. Please select that session first.`,
-            variant: "destructive",
-          });
-          return;
+        // Auto-set session from config
+        if (config.sessionId) {
+          setSelectedSessionId(config.sessionId);
         }
 
         if (config.hardcodedAssignments) setHardcodedAssignments(config.hardcodedAssignments);
@@ -689,31 +685,29 @@ export default function AMPMJobs() {
                     Session Selection
                   </CardTitle>
                   <CardDescription className="mt-2">
-                    Select a camp session to generate AM/PM job assignments
+                    Select a camp session or upload a saved configuration
                   </CardDescription>
                 </div>
-                {selectedSessionId && (
-                  <div className="shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
-                      data-testid="button-upload-config"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Config
-                    </Button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleUploadConfig}
-                      accept=".json"
-                      className="hidden"
-                      data-testid="input-upload-config"
-                    />
-                  </div>
-                )}
+                <div className="shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                    data-testid="button-upload-config"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Config
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadConfig}
+                    accept=".json"
+                    className="hidden"
+                    data-testid="input-upload-config"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>

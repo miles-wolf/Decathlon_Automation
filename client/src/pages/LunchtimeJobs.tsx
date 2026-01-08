@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, type ChangeEvent } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1120,7 +1120,7 @@ export default function LunchtimeJobs() {
   };
 
   // Upload and restore configuration
-  const handleUploadConfig = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadConfig = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -1343,13 +1343,37 @@ export default function LunchtimeJobs() {
           {/* Session Selection */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Session Selection
-              </CardTitle>
-              <CardDescription>
-                Select a camp session to load eligible staff
-              </CardDescription>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Session Selection
+                  </CardTitle>
+                  <CardDescription className="mt-2">
+                    Select a camp session or upload a saved configuration
+                  </CardDescription>
+                </div>
+                <div className="shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-primary text-primary hover:bg-primary/10 focus:ring-primary"
+                    data-testid="button-upload-config"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Config
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadConfig}
+                    accept=".json"
+                    className="hidden"
+                    data-testid="input-upload-config"
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="flex gap-4 items-end flex-wrap">
@@ -1403,36 +1427,13 @@ export default function LunchtimeJobs() {
           {selectedSessionId && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="h-5 w-5" />
-                      Configuration
-                    </CardTitle>
-                    <CardDescription className="mt-2">
-                      Set session-wide defaults or customize individual weeks to specify staff game days, tie dye days and staff, partial sessions for staff and more
-                    </CardDescription>
-                  </div>
-                  <div className="shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      data-testid="button-upload-config-top"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Config
-                    </Button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleUploadConfig}
-                      accept=".json"
-                      className="hidden"
-                      data-testid="input-upload-config"
-                    />
-                  </div>
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Configuration
+                </CardTitle>
+                <CardDescription className="mt-2">
+                  Set session-wide defaults or customize individual weeks to specify staff game days, tie dye days and staff, partial sessions for staff and more
+                </CardDescription>
               </CardHeader>
               <CardContent>
 

@@ -1864,7 +1864,7 @@ export default function LunchtimeJobs() {
                               <div className="text-left">
                                 <span className="font-medium">Hardcoded Job Assignments</span>
                                 <p className="text-xs text-muted-foreground font-normal">
-                                  Staff assigned to specific jobs for all days this week
+                                  Staff assigned to specific jobs this week (overrides session defaults)
                                 </p>
                               </div>
                             </div>

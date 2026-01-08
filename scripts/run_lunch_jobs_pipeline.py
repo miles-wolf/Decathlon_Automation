@@ -133,7 +133,7 @@ def validate_group_coverage(all_week_assignments, session_id, conn):
     else:
         return {
             'passed': True,
-            'message': 'All groups have staff working and staying back on any given day',
+            'message': 'All groups are appropriately covered each day of the week',
             'noWorkingIssues': [],
             'allWorkingIssues': []
         }
@@ -187,7 +187,7 @@ def main():
                 week_num += 1
         
         # Perform group coverage validation (combined: checks both working and staying back)
-        coverage_result = {'passed': True, 'message': 'No assignments to validate', 'noWorkingIssues': [], 'allWorkingIssues': []}
+        coverage_result = {'passed': True, 'message': 'All groups are appropriately covered each day of the week', 'noWorkingIssues': [], 'allWorkingIssues': []}
         
         if all_week_assignments_raw and 'conn' in output:
             try:

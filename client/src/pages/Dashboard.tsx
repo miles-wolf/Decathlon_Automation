@@ -9,7 +9,7 @@ const tools = [
     id: "lunchtime-jobs",
     title: "Lunchtime Jobs Assigner",
     description:
-      "Assign and balance lunch duties across staff with one click and quick edits",
+      "Quickly assign and balance lunchtime jobs across staff for the session",
     icon: Briefcase,
     iconSize: 24,
   },
@@ -17,7 +17,7 @@ const tools = [
     id: "am-pm-jobs",
     title: "AM/PM Jobs Assigner",
     description:
-      "Assign before and after camp roles with one click and quick edits",
+      "Quickly assign AM/PM jobs across staff for the session",
     icon: Clock,
     iconSize: 24,
   },

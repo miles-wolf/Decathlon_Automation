@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw } from "lucide-react";
+import { ArrowLeft, Play, Download, Upload, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -1041,10 +1041,19 @@ export default function LunchtimeJobs() {
     };
   };
 
-  // Download JSON config
+  // File input ref for upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Download full configuration (for reloading later)
   const handleDownloadConfig = () => {
-    const configs = weekConfigs.map(generateJsonConfig);
-    const blob = new Blob([JSON.stringify(configs, null, 2)], { type: "application/json" });
+    const fullConfig = {
+      version: 1,
+      sessionId: selectedSessionId,
+      numberOfWeeks,
+      sessionDefaults,
+      weekConfigs,
+    };
+    const blob = new Blob([JSON.stringify(fullConfig, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1054,8 +1063,59 @@ export default function LunchtimeJobs() {
 
     toast({
       title: "Downloaded",
-      description: "Configuration JSON downloaded",
+      description: "Configuration saved - you can upload this file later to restore your settings",
     });
+  };
+
+  // Upload and restore configuration
+  const handleUploadConfig = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const config = JSON.parse(content);
+
+        // Validate the config structure
+        if (!config.sessionId || !config.weekConfigs || !Array.isArray(config.weekConfigs)) {
+          throw new Error("Invalid configuration file format");
+        }
+
+        // Restore state
+        setSelectedSessionId(config.sessionId);
+        
+        if (config.numberOfWeeks) {
+          setNumberOfWeeks(config.numberOfWeeks);
+        }
+        
+        if (config.sessionDefaults) {
+          setSessionDefaults(config.sessionDefaults);
+        }
+        
+        if (config.weekConfigs) {
+          setWeekConfigs(config.weekConfigs);
+        }
+
+        toast({
+          title: "Configuration Loaded",
+          description: `Loaded settings for Session ${config.sessionId} with ${config.weekConfigs.length} weeks`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Upload Failed",
+          description: error.message || "Could not parse configuration file",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input so the same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleGenerate = async () => {
@@ -2059,6 +2119,22 @@ export default function LunchtimeJobs() {
                     <Download className="h-4 w-4 mr-2" />
                     Download Config
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="button-upload-config"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Config
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadConfig}
+                    accept=".json"
+                    className="hidden"
+                    data-testid="input-upload-config"
+                  />
                   <Button
                     variant="outline"
                     onClick={() => {

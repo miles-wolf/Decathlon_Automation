@@ -1,4 +1,4 @@
-import { ArrowLeft, Sun, Moon, Bell, Database, RotateCcw, Users, Calendar } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Bell, Database, RotateCcw, Users, Check } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/components/ThemeProvider";
 import { useSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,10 +33,52 @@ export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { settings, updateSettings, resetSettings, clearCache } = useSettings();
   const { toast } = useToast();
+  
+  // Local state for Enter-to-confirm inputs
+  const [weeksInput, setWeeksInput] = useState(settings.defaultNumberOfWeeks.toString());
+  const [weeksConfirmed, setWeeksConfirmed] = useState(true);
+  const [emailInput, setEmailInput] = useState(settings.notificationEmail);
+  const [emailConfirmed, setEmailConfirmed] = useState(true);
+  
+  // Sync local state when settings change externally
+  useEffect(() => {
+    setWeeksInput(settings.defaultNumberOfWeeks.toString());
+    setWeeksConfirmed(true);
+  }, [settings.defaultNumberOfWeeks]);
+  
+  useEffect(() => {
+    setEmailInput(settings.notificationEmail);
+    setEmailConfirmed(true);
+  }, [settings.notificationEmail]);
 
   const { data: sessions = [] } = useQuery<Session[]>({
     queryKey: ["/api/external-db/sessions"],
   });
+  
+  const handleWeeksKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      const num = parseInt(weeksInput);
+      if (num >= 1 && num <= 10) {
+        updateSettings({ defaultNumberOfWeeks: num });
+        setWeeksConfirmed(true);
+        toast({
+          title: "Default weeks updated",
+          description: `Set to ${num} week${num > 1 ? "s" : ""}`,
+        });
+      }
+    }
+  };
+  
+  const handleEmailKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      updateSettings({ notificationEmail: emailInput });
+      setEmailConfirmed(true);
+      toast({
+        title: "Email updated",
+        description: emailInput ? `Notifications will be sent to ${emailInput}` : "Email cleared",
+      });
+    }
+  };
 
   const formatSessionDisplay = (sessionId: number) => {
     if (sessionId === 1012) return "Session 1 - 2025";
@@ -152,24 +196,31 @@ export default function Settings() {
                 <div className="space-y-0.5 flex-1">
                   <Label htmlFor="default-weeks">Default Number of Weeks</Label>
                   <p className="text-sm text-muted-foreground">
-                    Pre-fill the weeks input for new configurations
+                    Press Enter to save
                   </p>
                 </div>
-                <Input
-                  id="default-weeks"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={settings.defaultNumberOfWeeks}
-                  onChange={(e) => {
-                    const num = parseInt(e.target.value);
-                    if (num >= 1 && num <= 10) {
-                      updateSettings({ defaultNumberOfWeeks: num });
-                    }
-                  }}
-                  className="w-20 text-center"
-                  data-testid="input-default-weeks"
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="default-weeks"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={weeksInput}
+                    onChange={(e) => {
+                      setWeeksInput(e.target.value);
+                      setWeeksConfirmed(false);
+                    }}
+                    onKeyDown={handleWeeksKeyDown}
+                    className="w-20 text-center"
+                    data-testid="input-default-weeks"
+                  />
+                  {weeksConfirmed && (
+                    <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                      <Check className="h-3 w-3" />
+                      Set
+                    </Badge>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -202,15 +253,31 @@ export default function Settings() {
 
               {settings.notificationsEnabled && (
                 <div className="space-y-2">
-                  <Label htmlFor="notification-email">Notification Email</Label>
-                  <Input
-                    id="notification-email"
-                    type="email"
-                    placeholder="your@email.com"
-                    value={settings.notificationEmail}
-                    onChange={(e) => updateSettings({ notificationEmail: e.target.value })}
-                    data-testid="input-notification-email"
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="notification-email">Notification Email</Label>
+                    <span className="text-xs text-muted-foreground">Press Enter to save</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="notification-email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={emailInput}
+                      onChange={(e) => {
+                        setEmailInput(e.target.value);
+                        setEmailConfirmed(false);
+                      }}
+                      onKeyDown={handleEmailKeyDown}
+                      className="flex-1"
+                      data-testid="input-notification-email"
+                    />
+                    {emailConfirmed && emailInput && (
+                      <Badge variant="outline" className="text-green-600 border-green-600 gap-1 shrink-0">
+                        <Check className="h-3 w-3" />
+                        Set
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               )}
             </CardContent>

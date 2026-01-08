@@ -111,6 +111,22 @@ interface AssignmentResult {
   week?: number;
 }
 
+interface GroupCoverageIssue {
+  week: number;
+  day: string;
+  group_id: number;
+}
+
+interface GroupCoverageValidation {
+  passed: boolean;
+  message: string;
+  issues: GroupCoverageIssue[];
+}
+
+interface ValidationResult {
+  groupCoverage: GroupCoverageValidation;
+}
+
 const DAYS = ["monday", "tuesday", "wednesday", "thursday"];
 
 const createDefaultSessionDefaults = (): SessionDefaults => ({
@@ -131,6 +147,7 @@ export default function LunchtimeJobs() {
   const [sessionDefaults, setSessionDefaults] = useState<SessionDefaults>(createDefaultSessionDefaults());
   const [weekConfigs, setWeekConfigs] = useState<WeekConfig[]>([createDefaultWeekConfig(1)]);
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
   const [hardcodedOpen, setHardcodedOpen] = useState(true);
@@ -1132,6 +1149,8 @@ export default function LunchtimeJobs() {
 
     setIsGenerating(true);
     setOutputTab("logs");
+    setValidationResult(null);  // Clear stale validation
+    setAssignmentResults([]);   // Clear stale assignments
     logStream.clearLogs();
     logStream.info("Starting lunch job assignment generation");
     logStream.info(`Session: ${formatSessionDisplay(selectedSessionId)}`);
@@ -1150,12 +1169,43 @@ export default function LunchtimeJobs() {
       });
 
       const data = await response.json();
-      if (data.results && Array.isArray(data.results)) {
-        setAssignmentResults(data.results);
-        logStream.success(`Generated ${data.results.length} assignments successfully`);
+      
+      // Handle new format: { assignments: [...], validation: {...} }
+      // Also support legacy format: results as array directly
+      let assignments: AssignmentResult[] = [];
+      let validation: ValidationResult | null = null;
+      
+      if (data.results) {
+        if (Array.isArray(data.results)) {
+          // Legacy format
+          assignments = data.results;
+        } else if (data.results.assignments && Array.isArray(data.results.assignments)) {
+          // New format with validation
+          assignments = data.results.assignments;
+          validation = data.results.validation || null;
+        }
+      }
+      
+      // Always set validation if present
+      if (validation) {
+        setValidationResult(validation);
+        
+        // Log validation result
+        if (validation.groupCoverage) {
+          if (validation.groupCoverage.passed) {
+            logStream.success(validation.groupCoverage.message);
+          } else {
+            logStream.warn(`Validation warning: ${validation.groupCoverage.message}`);
+          }
+        }
+      }
+      
+      if (assignments.length > 0) {
+        setAssignmentResults(assignments);
+        logStream.success(`Generated ${assignments.length} assignments successfully`);
         
         // Log summary by week
-        const byWeek = data.results.reduce((acc: Record<number, number>, r: AssignmentResult) => {
+        const byWeek = assignments.reduce((acc: Record<number, number>, r: AssignmentResult) => {
           const week = r.week || 1;
           acc[week] = (acc[week] || 0) + 1;
           return acc;
@@ -1167,13 +1217,20 @@ export default function LunchtimeJobs() {
         setOutputTab("summary");
         toast({
           title: "Success",
-          description: `Generated ${data.results.length} assignments`,
+          description: `Generated ${assignments.length} assignments`,
         });
       } else if (data.success) {
         logStream.success(data.message || "Assignments generated successfully");
         toast({
           title: "Success",
           description: data.message || "Assignments generated successfully",
+        });
+      } else if (validation && !validation.groupCoverage.passed) {
+        // Show validation warnings even with no assignments
+        toast({
+          title: "Warning",
+          description: validation.groupCoverage.message,
+          variant: "destructive",
         });
       }
     } catch (error: any) {
@@ -2206,6 +2263,48 @@ export default function LunchtimeJobs() {
                           </div>
                         </div>
 
+                        {/* Group Coverage Validation */}
+                        {validationResult?.groupCoverage && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupCoverage.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupCoverage.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Coverage Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupCoverage.message}
+                            </p>
+                            {!validationResult.groupCoverage.passed && validationResult.groupCoverage.issues.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30">
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  Groups without staff coverage:
+                                </p>
+                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                  {validationResult.groupCoverage.issues.slice(0, 20).map((issue, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                      Week {issue.week} • {issue.day} • Group {issue.group_id}
+                                    </Badge>
+                                  ))}
+                                  {validationResult.groupCoverage.issues.length > 20 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{validationResult.groupCoverage.issues.length - 20} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Job Target Overview - Collapsible */}
                         <Collapsible open={targetStaffOpen} onOpenChange={setTargetStaffOpen}>
                           <div className="border rounded-lg p-4">
@@ -2424,8 +2523,51 @@ export default function LunchtimeJobs() {
                         </div>
                       </>
                     ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        No assignments generated yet. Click "Generate Assignments" to start.
+                      <div className="space-y-4">
+                        {/* Show validation even when no assignments */}
+                        {validationResult?.groupCoverage && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupCoverage.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupCoverage.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Coverage Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupCoverage.message}
+                            </p>
+                            {!validationResult.groupCoverage.passed && validationResult.groupCoverage.issues.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30">
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  Groups without staff coverage:
+                                </p>
+                                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                  {validationResult.groupCoverage.issues.slice(0, 20).map((issue, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                      Week {issue.week} • {issue.day} • Group {issue.group_id}
+                                    </Badge>
+                                  ))}
+                                  {validationResult.groupCoverage.issues.length > 20 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{validationResult.groupCoverage.issues.length - 20} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="text-center py-8 text-muted-foreground">
+                          No assignments generated yet. Click "Generate Assignments" to start.
+                        </div>
                       </div>
                     )}
                   </TabsContent>

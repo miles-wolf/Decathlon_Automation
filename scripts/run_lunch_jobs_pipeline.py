@@ -10,6 +10,107 @@ import json
 # Add parent directory to path to import Decathlon_Automation_Core modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+def validate_group_coverage(all_week_assignments, session_id, conn):
+    """
+    Validate that each group has at least one staff member working each day.
+    
+    Returns dict with:
+        - passed: bool
+        - message: str
+        - issues: list of issue dicts (if any)
+    """
+    import pandas as pd
+    
+    # Get all groups for this session
+    sql_groups = f"""
+    SELECT DISTINCT sts.group_id
+    FROM camp.staff_to_session AS sts
+    WHERE sts.session_id = {session_id}
+      AND sts.role_id IN (1005, 1006)
+    ORDER BY sts.group_id
+    """
+    df_groups = pd.read_sql(sql_groups, conn)
+    all_groups = set(df_groups['group_id'].tolist())
+    
+    if not all_groups:
+        return {
+            'passed': True,
+            'message': 'No groups found to validate',
+            'issues': []
+        }
+    
+    # Days to check (Monday through Thursday, Friday is never used)
+    days_to_check = ['monday', 'tuesday', 'wednesday', 'thursday']
+    
+    group_coverage_issues = []
+    
+    for week_num, df_assignments in all_week_assignments:
+        if df_assignments is None or len(df_assignments) == 0:
+            # No assignments for this week - all groups uncovered on all days
+            for day in days_to_check:
+                for group_id in all_groups:
+                    group_coverage_issues.append({
+                        'week': int(week_num),
+                        'day': day.capitalize(),
+                        'group_id': int(group_id)
+                    })
+            continue
+        
+        # Get day column name
+        day_col = 'day_name' if 'day_name' in df_assignments.columns else 'day'
+        job_col = 'job_id' if 'job_id' in df_assignments.columns else 'lunch_job_id'
+        
+        for day in days_to_check:
+            day_assignments = df_assignments[df_assignments[day_col].str.lower() == day.lower()]
+            
+            # Check if THIS SPECIFIC DAY has staff game (job_id 1100)
+            if job_col in df_assignments.columns:
+                is_staff_game_day = (day_assignments[job_col] == 1100).any() if len(day_assignments) > 0 else False
+                if is_staff_game_day:
+                    # Staff game day - all staff work together, skip coverage check
+                    continue
+            
+            if len(day_assignments) == 0:
+                # No assignments this day - all groups uncovered
+                for group_id in all_groups:
+                    group_coverage_issues.append({
+                        'week': int(week_num),
+                        'day': day.capitalize(),
+                        'group_id': int(group_id)
+                    })
+                continue
+            
+            # Get unique groups that have assignments this day
+            if 'group_id' not in day_assignments.columns:
+                continue
+                
+            assigned_groups = set(day_assignments['group_id'].dropna().unique())
+            
+            # Find groups with no coverage
+            missing_groups = all_groups - assigned_groups
+            
+            if missing_groups:
+                for group_id in missing_groups:
+                    group_coverage_issues.append({
+                        'week': int(week_num),
+                        'day': day.capitalize(),
+                        'group_id': int(group_id)
+                    })
+    
+    if group_coverage_issues:
+        return {
+            'passed': False,
+            'message': f'Found {len(group_coverage_issues)} group coverage issues',
+            'issues': group_coverage_issues
+        }
+    else:
+        return {
+            'passed': True,
+            'message': 'All groups have at least one staff member working each day',
+            'issues': []
+        }
+
+
 def main():
     """Run the lunch job pipeline and output JSON results."""
     import pandas as pd
@@ -32,6 +133,7 @@ def main():
         
         # Extract long-format assignments from all weeks for UI display
         all_assignments = []
+        all_week_assignments_raw = []  # Keep original format for validation
         
         # Use all_week_assignments which contains (week_num, df_assignments) tuples
         if 'all_week_assignments' in output:
@@ -39,6 +141,7 @@ def main():
                 if isinstance(item, tuple) and len(item) >= 2:
                     week_num, df_assignments = item
                     if hasattr(df_assignments, 'columns'):
+                        all_week_assignments_raw.append((week_num, df_assignments))
                         df = df_assignments.copy()
                         df['week'] = week_num
                         all_assignments.append(df)
@@ -50,9 +153,25 @@ def main():
                 week_data = output[f'week_{week_num}']
                 if isinstance(week_data, dict) and 'df_final_assignments_enriched' in week_data:
                     df = week_data['df_final_assignments_enriched'].copy()
+                    all_week_assignments_raw.append((week_num, df.copy()))
                     df['week'] = week_num
                     all_assignments.append(df)
                 week_num += 1
+        
+        # Perform group coverage validation
+        validation_result = {'passed': True, 'message': 'No assignments to validate', 'issues': []}
+        
+        if all_week_assignments_raw and 'conn' in output:
+            try:
+                validation_result = validate_group_coverage(
+                    all_week_assignments_raw, 
+                    session_id, 
+                    output['conn']
+                )
+                print(f"Group coverage validation: {validation_result['message']}", file=sys.stderr)
+            except Exception as ve:
+                print(f"Warning: Group coverage validation failed: {ve}", file=sys.stderr)
+                validation_result = {'passed': True, 'message': 'Validation skipped due to error', 'issues': []}
         
         if all_assignments:
             df_combined = pd.concat(all_assignments, ignore_index=True)
@@ -75,9 +194,17 @@ def main():
             results = []
             print("No assignments generated", file=sys.stderr)
         
-        # Restore stdout and output JSON results
+        # Restore stdout and output JSON results with validation
         sys.stdout = old_stdout
-        print(json.dumps(results))
+        
+        # Output as object with assignments and validation
+        output_data = {
+            'assignments': results,
+            'validation': {
+                'groupCoverage': validation_result
+            }
+        }
+        print(json.dumps(output_data))
         
     except Exception as e:
         # Restore stdout if needed

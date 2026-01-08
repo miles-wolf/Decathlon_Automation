@@ -1301,7 +1301,7 @@ export default function LunchtimeJobs() {
             </Link>
             <div className="flex-1">
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
-                Lunchtime Job Assigner
+                Lunchtime Jobs Assigner
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Generate multi-week lunchtime job assignments

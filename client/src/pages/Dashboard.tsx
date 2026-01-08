@@ -7,7 +7,7 @@ import { apiRequest } from "@/lib/queryClient";
 const tools = [
   {
     id: "lunchtime-jobs",
-    title: "Lunchtime Job Assigner",
+    title: "Lunchtime Jobs Assigner",
     description:
       "Assign and balance lunch duties across staff with one click and quick edits",
     icon: Briefcase,
@@ -15,7 +15,7 @@ const tools = [
   },
   {
     id: "am-pm-jobs",
-    title: "AM/PM Job Assigner",
+    title: "AM/PM Jobs Assigner",
     description:
       "Assign before and after camp roles with one click and quick edits",
     icon: Clock,

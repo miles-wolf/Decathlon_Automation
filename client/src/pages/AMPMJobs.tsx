@@ -1398,12 +1398,11 @@ export default function AMPMJobs() {
                       Download Output CSV
                     </Button>
                     <Button
-                      variant="outline"
                       onClick={() => {
                         const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
                         window.open(url, "_blank");
                       }}
-                      className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                      className="bg-[#47c8f5] hover:bg-[#3bb8e5] text-white focus:ring-2 focus:ring-primary focus:ring-offset-2"
                       data-testid="button-view-sheets"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />

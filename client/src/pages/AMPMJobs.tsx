@@ -1411,7 +1411,7 @@ export default function AMPMJobs() {
                     <Button
                       size="sm"
                       onClick={() => {
-                        const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
+                        const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit#gid=1687802875`;
                         window.open(url, "_blank");
                       }}
                       className="bg-[#47c8f5] hover:bg-[#3bb8e5] text-white focus:ring-2 focus:ring-primary focus:ring-offset-2"

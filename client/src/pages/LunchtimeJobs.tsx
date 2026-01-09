@@ -2564,7 +2564,7 @@ export default function LunchtimeJobs() {
                             size="sm"
                             className="bg-[#47c8f5] hover:bg-[#3bb8e5] text-white focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1"
                             onClick={() => {
-                              const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
+                              const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit#gid=2068869187`;
                               window.open(url, "_blank");
                             }}
                             data-testid="button-view-sheets-bottom"

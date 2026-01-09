@@ -1,3 +1,5 @@
+import { Link } from "wouter";
+
 export function Footer() {
   return (
     <footer className="border-t">
@@ -5,27 +7,27 @@ export function Footer() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} Decathlon Sports Camp Director Tools</p>
           <div className="flex items-center gap-6">
-            <a
-              href="#privacy"
+            <Link
+              href="/about#privacy"
               className="hover:text-foreground transition-colors hover-elevate active-elevate-2 px-2 py-1 rounded-md"
               data-testid="link-privacy"
             >
               Privacy
-            </a>
-            <a
-              href="#terms"
+            </Link>
+            <Link
+              href="/about#terms"
               className="hover:text-foreground transition-colors hover-elevate active-elevate-2 px-2 py-1 rounded-md"
               data-testid="link-terms"
             >
               Terms
-            </a>
-            <a
-              href="#support"
+            </Link>
+            <Link
+              href="/about#support"
               className="hover:text-foreground transition-colors hover-elevate active-elevate-2 px-2 py-1 rounded-md"
               data-testid="link-support"
             >
               Support
-            </a>
+            </Link>
           </div>
         </div>
       </div>

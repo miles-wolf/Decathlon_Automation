@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
+import { useEffect, useRef } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -15,6 +16,26 @@ import History from "@/pages/History";
 import About from "@/pages/About";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
+
+// Scroll to top on route change (unless navigating to a hash anchor)
+function ScrollToTop() {
+  const [location] = useLocation();
+  const prevLocation = useRef(location);
+
+  useEffect(() => {
+    // Only scroll to top if the path changed (not just the hash)
+    const currentPath = location.split("#")[0];
+    const prevPath = prevLocation.current.split("#")[0];
+    
+    if (currentPath !== prevPath && !window.location.hash) {
+      window.scrollTo(0, 0);
+    }
+    
+    prevLocation.current = location;
+  }, [location]);
+
+  return null;
+}
 
 function Router() {
   return (
@@ -37,6 +58,7 @@ function App() {
       <TooltipProvider>
         <ThemeProvider>
           <SettingsProvider>
+            <ScrollToTop />
             <div className="min-h-screen bg-background flex flex-col">
               <Navbar />
               <div className="flex-1">

@@ -55,7 +55,11 @@ export function Combobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("w-full justify-between", className)}
+          className={cn(
+            "w-full justify-between border-2 border-input",
+            open && "!border-primary ring-1 ring-primary",
+            className
+          )}
           disabled={disabled}
           data-testid={testId}
         >

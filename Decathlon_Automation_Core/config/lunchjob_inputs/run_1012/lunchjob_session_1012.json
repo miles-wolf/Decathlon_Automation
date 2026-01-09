@@ -6,16 +6,19 @@
     "staff_game_days": [],
     "tie_dye_days": [],
     "tie_dye_staff": [],
-    "staff_to_remove": [],
+    "staff_to_remove": [
+      1173
+    ],
     "staff_to_add": [],
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1075,
+          1033
         ],
         "1009": [
-          1029
+          1029,
+          1129
         ]
       },
       "specific_days": []
@@ -26,20 +29,24 @@
   "week_2": {
     "session_id": 1012,
     "pattern_based_jobs": {},
-    "staff_game_days": [],
+    "staff_game_days": [
+      "wednesday"
+    ],
     "tie_dye_days": [],
     "tie_dye_staff": [],
-    "staff_to_remove": [],
+    "staff_to_remove": [
+      1173
+    ],
     "staff_to_add": [],
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1075,
+          1033
         ],
         "1009": [
           1029,
-          1021
+          1129
         ]
       },
       "specific_days": []
@@ -55,51 +62,20 @@
       "tuesday",
       "wednesday"
     ],
-    "tie_dye_staff": [
-      1001,
-      1145,
-      1165,
-      1139,
-      1067,
-      1125
-    ],
-    "staff_to_remove": [],
-    "staff_to_add": [],
-    "custom_job_assignments": {
-      "all_days": {
-        "1001": [
-          1033,
-          1143
-        ],
-        "1009": [
-          1029,
-          1021
-        ]
-      },
-      "specific_days": []
-    },
-    "debug": false,
-    "verbose": false
-  },
-  "week_4": {
-    "session_id": 1012,
-    "pattern_based_jobs": {},
-    "staff_game_days": [
-      "wednesday"
-    ],
-    "tie_dye_days": [],
     "tie_dye_staff": [],
-    "staff_to_remove": [],
+    "staff_to_remove": [
+      1173
+    ],
     "staff_to_add": [],
     "custom_job_assignments": {
       "all_days": {
         "1001": [
-          1033,
-          1143
+          1075,
+          1033
         ],
         "1009": [
           1029,
-          1021
+          1129
         ]
       },
       "specific_days": []

@@ -1,13 +1,14 @@
-import { ArrowLeft, Play, Download, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown } from "lucide-react";
+import { ArrowLeft, Play, Download, Upload, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw, Trash2 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, type ChangeEvent } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/use-settings";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -111,6 +112,33 @@ interface AssignmentResult {
   week?: number;
 }
 
+interface NoWorkingIssue {
+  week: number;
+  day: string;
+  group_id: number;
+  issue_type: 'no_working';
+}
+
+interface AllWorkingIssue {
+  week: number;
+  day: string;
+  group_id: number;
+  assigned: number;
+  total: number;
+  issue_type: 'all_working';
+}
+
+interface GroupCoverageValidation {
+  passed: boolean;
+  message: string;
+  noWorkingIssues: NoWorkingIssue[];
+  allWorkingIssues: AllWorkingIssue[];
+}
+
+interface ValidationResult {
+  groupCoverage: GroupCoverageValidation;
+}
+
 const DAYS = ["monday", "tuesday", "wednesday", "thursday"];
 
 const createDefaultSessionDefaults = (): SessionDefaults => ({
@@ -125,19 +153,73 @@ const createDefaultSessionDefaults = (): SessionDefaults => ({
 });
 
 export default function LunchtimeJobs() {
+  const { settings } = useSettings();
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [activeWeek, setActiveWeek] = useState(1);
   const [configTab, setConfigTab] = useState<string>("full-session");
   const [sessionDefaults, setSessionDefaults] = useState<SessionDefaults>(createDefaultSessionDefaults());
   const [weekConfigs, setWeekConfigs] = useState<WeekConfig[]>([createDefaultWeekConfig(1)]);
   const [assignmentResults, setAssignmentResults] = useState<AssignmentResult[]>([]);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputTab, setOutputTab] = useState<string>("summary");
   const [hardcodedOpen, setHardcodedOpen] = useState(true);
   const [weekScheduleOpen, setWeekScheduleOpen] = useState(true);
-  const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(true);
+  const [weekHardcodedOpen, setWeekHardcodedOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [numberOfWeeks, setNumberOfWeeks] = useState(settings.defaultNumberOfWeeks);
+  const [weeksInputValue, setWeeksInputValue] = useState(settings.defaultNumberOfWeeks.toString());
+  const [targetStaffOpen, setTargetStaffOpen] = useState(false);
+  const [variationFilter, setVariationFilter] = useState<'below' | 'all'>('below');
+  const [hasAppliedDefaults, setHasAppliedDefaults] = useState(false);
   const { toast } = useToast();
   const logStream = useLogStream();
+  
+  // Apply default session and weeks from settings on mount
+  useEffect(() => {
+    if (!hasAppliedDefaults) {
+      if (settings.defaultSessionId !== null) {
+        setSelectedSessionId(settings.defaultSessionId);
+      }
+      if (settings.defaultNumberOfWeeks > 1) {
+        setNumberOfWeeks(settings.defaultNumberOfWeeks);
+        setWeeksInputValue(settings.defaultNumberOfWeeks.toString());
+        const newConfigs: WeekConfig[] = [];
+        for (let i = 1; i <= settings.defaultNumberOfWeeks; i++) {
+          newConfigs.push(createDefaultWeekConfig(i));
+        }
+        setWeekConfigs(newConfigs);
+      }
+      setHasAppliedDefaults(true);
+    }
+  }, [hasAppliedDefaults]);
+  
+  // Refresh data mutation - clears cache and re-fetches all data
+  const refreshDataMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/external-db/refresh-cache", { refetch: true });
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate all related queries to force refetch
+      queryClient.invalidateQueries({ queryKey: ["/api/external-db/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/external-db/lunch-jobs"] });
+      if (selectedSessionId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/external-db/eligible-staff", selectedSessionId] });
+      }
+      toast({
+        title: "Data Refreshed",
+        description: "Successfully refreshed all data from the database.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Refresh Failed",
+        description: error.message || "Failed to refresh data. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Fetch external sessions
   const { data: externalSessions = [], isLoading: sessionsLoading } = useQuery<ExternalSession[]>({
@@ -515,20 +597,40 @@ export default function LunchtimeJobs() {
     }));
   };
 
-  const handleAddWeek = () => {
-    const newWeekNumber = weekConfigs.length + 1;
-    setWeekConfigs([...weekConfigs, createDefaultWeekConfig(newWeekNumber)]);
-    setActiveWeek(newWeekNumber);
+  const handleConfigTabChange = (value: string) => {
+    setConfigTab(value);
+    // Sync activeWeek when selecting a week tab
+    if (value.startsWith("week-")) {
+      const weekNum = parseInt(value.replace("week-", ""));
+      if (!isNaN(weekNum)) {
+        setActiveWeek(weekNum);
+      }
+    }
   };
 
-  const handleRemoveWeek = (weekNumber: number) => {
-    if (weekConfigs.length <= 1) return;
-    const newConfigs = weekConfigs
-      .filter(w => w.weekNumber !== weekNumber)
-      .map((w, i) => ({ ...w, weekNumber: i + 1 }));
-    setWeekConfigs(newConfigs);
-    if (activeWeek > newConfigs.length) {
-      setActiveWeek(newConfigs.length);
+  const adjustWeekConfigs = (targetCount: number) => {
+    if (targetCount === weekConfigs.length) return;
+    
+    if (targetCount > weekConfigs.length) {
+      // Add more weeks
+      const newConfigs = [...weekConfigs];
+      for (let i = weekConfigs.length + 1; i <= targetCount; i++) {
+        newConfigs.push(createDefaultWeekConfig(i));
+      }
+      setWeekConfigs(newConfigs);
+    } else {
+      // Remove weeks from the end
+      setWeekConfigs(weekConfigs.slice(0, targetCount));
+      // Reset configTab if it points to a removed week
+      if (configTab.startsWith("week-")) {
+        const currentWeek = parseInt(configTab.replace("week-", ""));
+        if (currentWeek > targetCount) {
+          setConfigTab("full-session");
+        }
+      }
+      if (activeWeek > targetCount) {
+        setActiveWeek(targetCount);
+      }
     }
   };
 
@@ -862,9 +964,17 @@ export default function LunchtimeJobs() {
     });
 
     // Find staff with multiple assignments
+    // Exception: Arts & Crafts + Tie Dye is allowed since A&C staff typically do tie dye
     allStaffAssignments.forEach((sections, staffId) => {
       if (sections.length > 1) {
-        duplicates.push({ staffId, sections });
+        // Check if it's only Arts & Crafts and Tie Dye - this is allowed
+        const isArtsAndTieDyeOnly = sections.length === 2 && 
+          sections.includes("Arts & Crafts") && 
+          sections.includes("Tie Dye");
+        
+        if (!isArtsAndTieDyeOnly) {
+          duplicates.push({ staffId, sections });
+        }
       }
     });
 
@@ -983,10 +1093,19 @@ export default function LunchtimeJobs() {
     };
   };
 
-  // Download JSON config
+  // File input ref for upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Download full configuration (for reloading later)
   const handleDownloadConfig = () => {
-    const configs = weekConfigs.map(generateJsonConfig);
-    const blob = new Blob([JSON.stringify(configs, null, 2)], { type: "application/json" });
+    const fullConfig = {
+      version: 1,
+      sessionId: selectedSessionId,
+      numberOfWeeks,
+      sessionDefaults,
+      weekConfigs,
+    };
+    const blob = new Blob([JSON.stringify(fullConfig, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -996,8 +1115,59 @@ export default function LunchtimeJobs() {
 
     toast({
       title: "Downloaded",
-      description: "Configuration JSON downloaded",
+      description: "Configuration saved - you can upload this file later to restore your settings",
     });
+  };
+
+  // Upload and restore configuration
+  const handleUploadConfig = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const config = JSON.parse(content);
+
+        // Validate the config structure
+        if (!config.sessionId || !config.weekConfigs || !Array.isArray(config.weekConfigs)) {
+          throw new Error("Invalid configuration file format");
+        }
+
+        // Restore state
+        setSelectedSessionId(config.sessionId);
+        
+        if (config.numberOfWeeks) {
+          setNumberOfWeeks(config.numberOfWeeks);
+        }
+        
+        if (config.sessionDefaults) {
+          setSessionDefaults(config.sessionDefaults);
+        }
+        
+        if (config.weekConfigs) {
+          setWeekConfigs(config.weekConfigs);
+        }
+
+        toast({
+          title: "Configuration Loaded",
+          description: `Loaded settings for Session ${config.sessionId} with ${config.weekConfigs.length} weeks`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Upload Failed",
+          description: error.message || "Could not parse configuration file",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input so the same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleGenerate = async () => {
@@ -1012,6 +1182,8 @@ export default function LunchtimeJobs() {
 
     setIsGenerating(true);
     setOutputTab("logs");
+    setValidationResult(null);  // Clear stale validation
+    setAssignmentResults([]);   // Clear stale assignments
     logStream.clearLogs();
     logStream.info("Starting lunch job assignment generation");
     logStream.info(`Session: ${formatSessionDisplay(selectedSessionId)}`);
@@ -1030,12 +1202,49 @@ export default function LunchtimeJobs() {
       });
 
       const data = await response.json();
-      if (data.results && Array.isArray(data.results)) {
-        setAssignmentResults(data.results);
-        logStream.success(`Generated ${data.results.length} assignments successfully`);
+      
+      // Handle new format: { assignments: [...], validation: {...} }
+      // Also support legacy format: results as array directly
+      let assignments: AssignmentResult[] = [];
+      let validation: ValidationResult | null = null;
+      
+      if (data.results) {
+        if (Array.isArray(data.results)) {
+          // Legacy format
+          assignments = data.results;
+        } else if (data.results.assignments && Array.isArray(data.results.assignments)) {
+          // New format with validation
+          assignments = data.results.assignments;
+          validation = data.results.validation || null;
+        }
+      }
+      
+      // Always set validation if present
+      if (validation) {
+        setValidationResult(validation);
+        
+        // Log validation result
+        if (validation.groupCoverage) {
+          if (validation.groupCoverage.passed) {
+            logStream.success(validation.groupCoverage.message);
+          } else {
+            logStream.warn(`Validation warning: ${validation.groupCoverage.message}`);
+            if (validation.groupCoverage.noWorkingIssues.length > 0) {
+              logStream.warn(`Groups with no staff working: ${validation.groupCoverage.noWorkingIssues.length} issues`);
+            }
+            if (validation.groupCoverage.allWorkingIssues.length > 0) {
+              logStream.warn(`Groups with all staff working: ${validation.groupCoverage.allWorkingIssues.length} issues`);
+            }
+          }
+        }
+      }
+      
+      if (assignments.length > 0) {
+        setAssignmentResults(assignments);
+        logStream.success(`Generated ${assignments.length} assignments successfully`);
         
         // Log summary by week
-        const byWeek = data.results.reduce((acc: Record<number, number>, r: AssignmentResult) => {
+        const byWeek = assignments.reduce((acc: Record<number, number>, r: AssignmentResult) => {
           const week = r.week || 1;
           acc[week] = (acc[week] || 0) + 1;
           return acc;
@@ -1047,13 +1256,20 @@ export default function LunchtimeJobs() {
         setOutputTab("summary");
         toast({
           title: "Success",
-          description: `Generated ${data.results.length} assignments`,
+          description: `Generated ${assignments.length} assignments`,
         });
       } else if (data.success) {
         logStream.success(data.message || "Assignments generated successfully");
         toast({
           title: "Success",
           description: data.message || "Assignments generated successfully",
+        });
+      } else if (validation && !validation.groupCoverage.passed) {
+        // Show validation warnings even with no assignments
+        toast({
+          title: "Warning",
+          description: validation.groupCoverage.message,
+          variant: "destructive",
         });
       }
     } catch (error: any) {
@@ -1107,7 +1323,7 @@ export default function LunchtimeJobs() {
             </Link>
             <div className="flex-1">
               <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
-                Lunchtime Job Assigner
+                Lunchtime Jobs Assigner
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Generate multi-week lunchtime job assignments
@@ -1127,17 +1343,41 @@ export default function LunchtimeJobs() {
           {/* Session Selection */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Session Selection
-              </CardTitle>
-              <CardDescription>
-                Select a camp session to load eligible staff
-              </CardDescription>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Session Selection
+                  </CardTitle>
+                  <CardDescription className="mt-2">
+                    Select a camp session or upload a saved configuration
+                  </CardDescription>
+                </div>
+                <div className="shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                    data-testid="button-upload-config"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Config
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadConfig}
+                    accept=".json"
+                    className="hidden"
+                    data-testid="input-upload-config"
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-4 items-end">
-                <div className="flex-1 space-y-2">
+              <div className="flex gap-4 items-end flex-wrap">
+                <div className="flex-1 min-w-[200px] space-y-2">
                   <Label htmlFor="session">Session</Label>
                   <Select
                     value={selectedSessionId?.toString() || ""}
@@ -1156,17 +1396,29 @@ export default function LunchtimeJobs() {
                     </SelectContent>
                   </Select>
                 </div>
-                {selectedSessionId && (
-                  <div className="flex gap-2">
-                    <Badge variant="outline" className="py-2">
-                      <Users className="h-3 w-3 mr-1" />
-                      {staffLoading ? "..." : `${eligibleStaff.length} staff`}
-                    </Badge>
-                    <Badge variant="outline" className="py-2">
-                      {jobsLoading ? "..." : `${lunchJobs.length} jobs`}
-                    </Badge>
-                  </div>
-                )}
+                <div className="flex gap-2 items-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshDataMutation.mutate()}
+                    disabled={refreshDataMutation.isPending}
+                    data-testid="button-refresh-data"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${refreshDataMutation.isPending ? "animate-spin" : ""}`} />
+                    {refreshDataMutation.isPending ? "Refreshing..." : "Refresh Data"}
+                  </Button>
+                  {selectedSessionId && (
+                    <>
+                      <Badge variant="outline" className="py-2">
+                        <Users className="h-3 w-3 mr-1" />
+                        {staffLoading ? "..." : `${eligibleStaff.length} staff`}
+                      </Badge>
+                      <Badge variant="outline" className="py-2">
+                        {jobsLoading ? "..." : `${lunchJobs.length} jobs`}
+                      </Badge>
+                    </>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1175,37 +1427,76 @@ export default function LunchtimeJobs() {
           {selectedSessionId && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="h-5 w-5" />
-                      Configuration
-                    </CardTitle>
-                    <CardDescription>
-                      Set session-wide defaults or customize individual weeks
-                    </CardDescription>
-                  </div>
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Configuration
+                </CardTitle>
+                <CardDescription className="mt-2">
+                  Set session-wide defaults or customize individual weeks to specify staff game days, tie dye days and staff, partial sessions for staff and more
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs value={configTab} onValueChange={setConfigTab}>
-                  <TabsList className="mb-4">
-                    <TabsTrigger value="full-session" data-testid="tab-full-session">
+
+                <Tabs value={configTab} onValueChange={handleConfigTabChange}>
+                  <TabsList className="mb-4 flex-nowrap overflow-x-auto overflow-y-hidden w-full scrollbar-thin inline-flex justify-start">
+                    <TabsTrigger value="full-session" data-testid="tab-full-session" className="shrink-0">
                       <Calendar className="h-4 w-4 mr-2" />
                       Full Session
                     </TabsTrigger>
-                    <TabsTrigger value="weeks" data-testid="tab-weeks">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Individual Weeks
-                    </TabsTrigger>
+                    {weekConfigs.map((config) => (
+                      <TabsTrigger 
+                        key={config.weekNumber} 
+                        value={`week-${config.weekNumber}`} 
+                        data-testid={`tab-week-${config.weekNumber}`}
+                        className="shrink-0"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Week {config.weekNumber}
+                      </TabsTrigger>
+                    ))}
                   </TabsList>
 
                   {/* Full Session Tab */}
                   <TabsContent value="full-session" className="space-y-6">
-                    <div className="bg-muted/50 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-muted-foreground">
-                        Settings configured here apply to all weeks by default. You can override these settings for specific weeks in the Individual Weeks tab.
-                      </p>
+                    {/* Number of Weeks Selector */}
+                    <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                          <Label className="text-base font-medium">Number of Weeks</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Select how many weeks to configure for this session
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={weeksInputValue}
+                            onChange={(e) => setWeeksInputValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const num = parseInt(weeksInputValue);
+                                if (num >= 1 && num <= 10) {
+                                  setNumberOfWeeks(num);
+                                  adjustWeekConfigs(num);
+                                } else {
+                                  setWeeksInputValue(numberOfWeeks.toString());
+                                  toast({
+                                    title: "Invalid Number",
+                                    description: "Please enter a number between 1 and 10",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }
+                            }}
+                            onBlur={() => setWeeksInputValue(numberOfWeeks.toString())}
+                            className="w-14 text-center font-medium pr-1"
+                            data-testid="input-number-of-weeks"
+                          />
+                          <span className="text-sm text-muted-foreground">weeks (press Enter)</span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Hardcoded Assignments Section - Collapsible */}
@@ -1217,7 +1508,7 @@ export default function LunchtimeJobs() {
                             <div className="text-left">
                               <span className="font-medium">Hardcoded Job Assignments</span>
                               <p className="text-xs text-muted-foreground font-normal">
-                                Staff assigned to specific jobs for all days of all weeks
+                                Assign staff to specific jobs for all weeks on their scheduled work days
                               </p>
                             </div>
                           </div>
@@ -1486,38 +1777,7 @@ export default function LunchtimeJobs() {
                     </div>
                   </TabsContent>
 
-                  {/* Individual Weeks Tab */}
-                  <TabsContent value="weeks" className="space-y-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-muted-foreground">
-                        Override session defaults for specific weeks. Weeks use session defaults unless customized here.
-                      </p>
-                      <Button variant="outline" size="sm" onClick={handleAddWeek} data-testid="button-add-week">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Week
-                      </Button>
-                    </div>
-
-                    <Tabs value={`week-${activeWeek}`} onValueChange={(v) => setActiveWeek(parseInt(v.replace("week-", "")))}>
-                  <TabsList className="mb-4 flex-wrap">
-                    {weekConfigs.map((config) => (
-                      <TabsTrigger key={config.weekNumber} value={`week-${config.weekNumber}`} data-testid={`tab-week-${config.weekNumber}`}>
-                        Week {config.weekNumber}
-                        {weekConfigs.length > 1 && (
-                          <button
-                            className="ml-2 hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveWeek(config.weekNumber);
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-
+                  {/* Individual Week Tabs */}
                   {weekConfigs.map((config) => (
                     <TabsContent key={config.weekNumber} value={`week-${config.weekNumber}`} className="space-y-4">
                       {/* Week Schedule Section - Collapsible */}
@@ -1627,7 +1887,7 @@ export default function LunchtimeJobs() {
                               <div className="text-left">
                                 <span className="font-medium">Hardcoded Job Assignments</span>
                                 <p className="text-xs text-muted-foreground font-normal">
-                                  Staff assigned to specific jobs for all days this week
+                                  Staff assigned to specific jobs this week (overrides session defaults)
                                 </p>
                               </div>
                             </div>
@@ -1815,6 +2075,7 @@ export default function LunchtimeJobs() {
                       {/* Collapsible Advanced Options */}
                       <div className="space-y-3 pt-4 border-t">
                         <p className="text-sm font-medium text-muted-foreground">Advanced Options</p>
+                        <p className="text-sm text-muted-foreground">Use these options to specify staff who are working partial sessions</p>
                         
                         {/* Staff to Exclude - Collapsible */}
                         <Collapsible>
@@ -1950,8 +2211,6 @@ export default function LunchtimeJobs() {
                       </div>
                     </TabsContent>
                   ))}
-                    </Tabs>
-                  </TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
@@ -1973,22 +2232,19 @@ export default function LunchtimeJobs() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={handleDownloadConfig}
-                    data-testid="button-download-config"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Config
-                  </Button>
-                  <Button
-                    variant="outline"
                     onClick={() => {
-                      const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
-                      window.open(url, "_blank");
+                      setSessionDefaults(createDefaultSessionDefaults());
+                      const newConfigs: WeekConfig[] = [];
+                      for (let i = 1; i <= numberOfWeeks; i++) {
+                        newConfigs.push(createDefaultWeekConfig(i));
+                      }
+                      setWeekConfigs(newConfigs);
                     }}
-                    data-testid="button-view-sheets"
+                    disabled={isGenerating}
+                    data-testid="button-clear-inputs"
                   >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View Google Sheet
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Clear Inputs
                   </Button>
                 </div>
               </CardContent>
@@ -2062,137 +2318,229 @@ export default function LunchtimeJobs() {
                           </div>
                         </div>
 
-                        {/* Job Target Overview */}
-                        <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Target Staff per Job</h4>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Normal staff assigned per day for each job
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(jobDayStats.byJob)
-                              .sort((a, b) => a[0].localeCompare(b[0]))
-                              .map(([jobName, stats]) => (
-                                <div key={jobName} className="flex items-center gap-1 text-sm">
-                                  <span className="text-muted-foreground">{jobName}:</span>
-                                  <Badge variant="outline">
-                                    {stats.normalStaff !== null ? stats.normalStaff : '-'}
-                                  </Badge>
+                        {/* Job Target Overview - Collapsible */}
+                        <Collapsible open={targetStaffOpen} onOpenChange={setTargetStaffOpen}>
+                          <div className="border rounded-lg p-4">
+                            <CollapsibleTrigger asChild>
+                              <button className="flex items-center justify-between w-full text-left">
+                                <div>
+                                  <h4 className="font-medium">Target Staff per Job</h4>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Normal staff assigned per day for each job
+                                  </p>
                                 </div>
-                              ))}
+                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-200 ${targetStaffOpen ? 'rotate-180' : ''}`} />
+                              </button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
+                                {Object.entries(jobDayStats.byJob)
+                                  .sort((a, b) => a[0].localeCompare(b[0]))
+                                  .map(([jobName, stats]) => (
+                                    <div key={jobName} className="flex items-center gap-1 text-sm">
+                                      <span className="text-muted-foreground">{jobName}:</span>
+                                      <Badge variant="outline">
+                                        {stats.normalStaff !== null ? stats.normalStaff : '-'}
+                                      </Badge>
+                                    </div>
+                                  ))}
+                              </div>
+                            </CollapsibleContent>
                           </div>
-                        </div>
+                        </Collapsible>
 
                         {/* Staffing Variations - Days that differ from target */}
-                        <div className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-3">Staffing Variations</h4>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Days where staffing differs from the target number for a job or staff from a particular group aren't split correctly
-                          </p>
-                          {(() => {
-                            // Build variations comparing each week/day to target (not average)
-                            const variations: Array<{
-                              jobName: string;
-                              week: number;
-                              day: string;
-                              count: number;
-                              target: number;
-                              type: 'above' | 'below';
-                            }> = [];
+                        {(() => {
+                          // Build variations comparing each week/day to target (not average)
+                          // Exclude Tie Dye jobs from variations
+                          const variations: Array<{
+                            jobName: string;
+                            week: number;
+                            day: string;
+                            count: number;
+                            target: number;
+                            type: 'above' | 'below';
+                          }> = [];
+                          
+                          for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
+                            // Skip Tie Dye jobs
+                            if (jobName.toLowerCase().includes('tie dye')) continue;
+                            if (stats.normalStaff === null) continue;
                             
-                            for (const [jobName, stats] of Object.entries(jobDayStats.byJob)) {
-                              if (stats.normalStaff === null) continue;
+                            for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
+                              const [weekStr, day] = weekDayKey.split('-');
+                              const week = parseInt(weekStr);
                               
-                              for (const [weekDayKey, count] of Object.entries(stats.byWeekDay)) {
-                                const [weekStr, day] = weekDayKey.split('-');
-                                const week = parseInt(weekStr);
-                                
-                                if (count > stats.normalStaff) {
-                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'above' });
-                                } else if (count < stats.normalStaff) {
-                                  variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'below' });
-                                }
+                              if (count > stats.normalStaff) {
+                                variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'above' });
+                              } else if (count < stats.normalStaff) {
+                                variations.push({ jobName, week, day, count, target: stats.normalStaff, type: 'below' });
                               }
                             }
-                            
-                            // Sort by week, then day, then job name
-                            variations.sort((a, b) => {
-                              if (a.week !== b.week) return a.week - b.week;
-                              const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
-                              if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
-                                return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
-                              }
-                              return a.jobName.localeCompare(b.jobName);
-                            });
-                            
-                            if (variations.length === 0) {
-                              return (
-                                <p className="text-sm text-muted-foreground italic">
-                                  No variations found. All days match the target staffing levels.
-                                </p>
-                              );
+                          }
+                          
+                          // Check if there are any below-target variations
+                          const hasBelowTarget = variations.some(v => v.type === 'below');
+                          
+                          // Filter based on selection
+                          const filteredVariations = variationFilter === 'below' 
+                            ? variations.filter(v => v.type === 'below')
+                            : variations;
+                          
+                          // Sort by week, then day, then job name
+                          filteredVariations.sort((a, b) => {
+                            if (a.week !== b.week) return a.week - b.week;
+                            const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday'];
+                            if (dayOrder.indexOf(a.day) !== dayOrder.indexOf(b.day)) {
+                              return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
                             }
-                            
-                            return (
-                              <div className="space-y-2 max-h-64 overflow-auto">
-                                {variations.map((v, idx) => (
-                                  <div key={idx} className="flex items-center gap-2 text-sm">
-                                    <Badge 
-                                      variant="outline" 
-                                      className={v.type === 'above' 
-                                        ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
-                                        : 'border-blue-500 text-blue-700 dark:text-blue-400'}
-                                    >
-                                      Wk{v.week} {v.day.charAt(0).toUpperCase()}{v.day.slice(1, 3)}
-                                    </Badge>
-                                    <span className="text-muted-foreground">
-                                      {v.jobName}: <strong>{v.count}</strong> 
-                                      {v.type === 'above' ? ' ↑' : ' ↓'} (target: {v.target})
-                                    </span>
+                            return a.jobName.localeCompare(b.jobName);
+                          });
+                          
+                          return (
+                            <div className={`border rounded-lg p-4 ${hasBelowTarget ? 'border-amber-500/50 bg-amber-500/5' : 'border-green-500/50 bg-green-500/5'}`}>
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  {hasBelowTarget ? (
+                                    <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                      <span className="text-white text-xs font-bold">!</span>
+                                    </div>
+                                  ) : (
+                                    <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                      <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <h4 className="font-medium">Staffing Variations</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                      Days where staffing differs from the target
+                                    </p>
                                   </div>
-                                ))}
+                                </div>
+                                <Select value={variationFilter} onValueChange={(v) => setVariationFilter(v as 'below' | 'all')}>
+                                  <SelectTrigger className="w-[160px]" data-testid="select-variation-filter">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="below">Below Target</SelectItem>
+                                    <SelectItem value="all">All Variations</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
-                            );
-                          })()}
-                          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
-                              Above target
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
-                              Below target
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Same-Group Warnings */}
-                        {jobDayStats.sameGroupWarnings.length > 0 && (
-                          <div className="border border-yellow-500 rounded-lg p-4 bg-yellow-50 dark:bg-yellow-950/20">
-                            <h4 className="font-medium mb-2 text-yellow-700 dark:text-yellow-400">
-                              Same Group on Same Day Warning
-                            </h4>
-                            <p className="text-xs text-muted-foreground mb-3">
-                              All staff from these groups are working on the same day (excluding Staff Game days):
-                            </p>
-                            <div className="space-y-2">
-                              {jobDayStats.sameGroupWarnings.map((warning, idx) => (
-                                <div key={idx} className="flex items-center gap-2 text-sm">
-                                  <Badge variant="outline" className="border-yellow-500">
-                                    Week {warning.week} {warning.day.charAt(0).toUpperCase() + warning.day.slice(1)}
-                                  </Badge>
-                                  <span className="text-yellow-700 dark:text-yellow-400">
-                                    Group {warning.groupId}: {warning.staffNames.join(", ")}
+                              {filteredVariations.length === 0 ? (
+                                <p className={`text-sm ${hasBelowTarget ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
+                                  {variationFilter === 'below' 
+                                    ? 'No jobs are below target staffing levels.'
+                                    : 'No variations found. All days match the target staffing levels.'}
+                                </p>
+                              ) : (
+                                <div className="space-y-2 max-h-64 overflow-auto">
+                                  {filteredVariations.map((v, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 text-sm">
+                                      <Badge 
+                                        variant="outline" 
+                                        className={v.type === 'above' 
+                                          ? 'border-yellow-500 text-yellow-700 dark:text-yellow-400' 
+                                          : 'border-blue-500 text-blue-700 dark:text-blue-400'}
+                                      >
+                                        Wk{v.week} {v.day.charAt(0).toUpperCase()}{v.day.slice(1, 3)}
+                                      </Badge>
+                                      <span className="text-muted-foreground">
+                                        {v.jobName}: <strong>{v.count}</strong> 
+                                        {v.type === 'above' ? ' ↑' : ' ↓'} (target: {v.target})
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {variationFilter === 'all' && (
+                                <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Badge variant="outline" className="border-yellow-500 text-yellow-700 dark:text-yellow-400 h-4 px-1">↑</Badge>
+                                    Above target
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Badge variant="outline" className="border-blue-500 text-blue-700 dark:text-blue-400 h-4 px-1">↓</Badge>
+                                    Below target
                                   </span>
                                 </div>
-                              ))}
+                              )}
                             </div>
+                          );
+                        })()}
+
+                        {/* Group Coverage Validation - Combined (no working & all working checks) */}
+                        {validationResult?.groupCoverage && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupCoverage.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupCoverage.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Coverage Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupCoverage.message}
+                            </p>
+                            {!validationResult.groupCoverage.passed && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30 space-y-3">
+                                {validationResult.groupCoverage.noWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with no staff working:
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.noWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id}
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.noWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.noWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {validationResult.groupCoverage.allWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with all staff working (no one staying back):
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.allWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total})
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.allWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.allWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             variant="outline"
                             size="sm"
+                            className="focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1 focus:border-[#E63946]"
                             onClick={() => {
                               const headers = ["week", "day", "job_name", "job_code", "staff_name", "staff_id"];
                               const csvContent = [
@@ -2216,13 +2564,101 @@ export default function LunchtimeJobs() {
                             data-testid="button-download-csv"
                           >
                             <Download className="h-4 w-4 mr-2" />
-                            Download CSV
+                            Download Output CSV
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1 focus:border-[#E63946]"
+                            onClick={handleDownloadConfig}
+                            data-testid="button-download-config-bottom"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Config
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-[#47c8f5] hover:bg-[#3bb8e5] text-white focus:ring-2 focus:ring-[#E63946] focus:ring-offset-1"
+                            onClick={() => {
+                              const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit#gid=2068869187`;
+                              window.open(url, "_blank");
+                            }}
+                            data-testid="button-view-sheets-bottom"
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            View Google Sheet
                           </Button>
                         </div>
                       </>
                     ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        No assignments generated yet. Click "Generate Assignments" to start.
+                      <div className="space-y-4">
+                        {/* Show validation even when no assignments */}
+                        {validationResult?.groupCoverage && (
+                          <div className={`border rounded-lg p-4 ${validationResult.groupCoverage.passed ? 'border-green-500/50 bg-green-500/5' : 'border-amber-500/50 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {validationResult.groupCoverage.passed ? (
+                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">!</span>
+                                </div>
+                              )}
+                              <h4 className="font-medium">Group Coverage Validation</h4>
+                            </div>
+                            <p className={`text-sm ${validationResult.groupCoverage.passed ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                              {validationResult.groupCoverage.message}
+                            </p>
+                            {!validationResult.groupCoverage.passed && (
+                              <div className="mt-3 pt-3 border-t border-amber-500/30 space-y-3">
+                                {validationResult.groupCoverage.noWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with no staff working:
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.noWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id}
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.noWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.noWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {validationResult.groupCoverage.allWorkingIssues.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      Groups with all staff working (no one staying back):
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                      {validationResult.groupCoverage.allWorkingIssues.slice(0, 15).map((issue, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                          Week {issue.week} • {issue.day} • Group {issue.group_id} ({issue.assigned}/{issue.total})
+                                        </Badge>
+                                      ))}
+                                      {validationResult.groupCoverage.allWorkingIssues.length > 15 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{validationResult.groupCoverage.allWorkingIssues.length - 15} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="text-center py-8 text-muted-foreground">
+                          No assignments generated yet. Click "Generate Assignments" to start.
+                        </div>
                       </div>
                     )}
                   </TabsContent>

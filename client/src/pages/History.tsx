@@ -107,7 +107,7 @@ export default function History() {
                   <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No assignment runs yet</p>
                   <p className="text-sm mt-1">
-                    Run assignments from the Lunchtime or AM/PM Job tools to see history here
+                    Run assignments from the Lunchtime or AM/PM Jobs tools to see history here
                   </p>
                 </div>
               ) : (

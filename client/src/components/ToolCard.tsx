@@ -17,7 +17,7 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconS
   if (comingSoon) {
     return (
       <div
-        className="block rounded-2xl border bg-card p-5 opacity-60 cursor-not-allowed"
+        className="block rounded-2xl border-2 bg-card p-5 opacity-60 cursor-not-allowed"
         data-testid={`card-tool-${id}`}
       >
         <div className="flex items-center gap-3">
@@ -39,22 +39,17 @@ export function ToolCard({ id, icon: Icon, title, description, comingSoon, iconS
   return (
     <Link
       href={`/${id}`}
-      className="group block rounded-2xl border bg-card p-5 hover:shadow-md transition-shadow hover-elevate"
+      className="group block rounded-2xl border-2 bg-card p-5 hover:shadow-md transition-shadow hover-elevate focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
       data-testid={`card-tool-${id}`}
     >
       <div className="flex items-center gap-3">
         <div className="h-12 w-12 min-h-12 min-w-12 rounded-xl grid place-content-center bg-[#47c8f5] dark:bg-[#47c8f5]">
           <Icon className={iconClassName} style={iconStyle} strokeWidth={1.5} />
         </div>
-        <div>
+        <div className="flex-1">
           <h3 className="font-semibold tracking-tight">{title}</h3>
           <p className="text-sm text-muted-foreground mt-1">{description}</p>
         </div>
-      </div>
-      <div className="mt-4">
-        <span className="inline-flex items-center text-sm font-medium text-primary group-hover:translate-x-0.5 transition-transform">
-          Open <span className="ml-1">→</span>
-        </span>
       </div>
     </Link>
   );

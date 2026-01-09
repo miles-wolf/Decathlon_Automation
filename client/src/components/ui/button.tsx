@@ -11,9 +11,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground border border-primary-border",
+          "bg-[#47c8f5] text-white border-2 border-[#3bb8e5] focus:border-primary focus:ring-1 focus:ring-primary active:border-primary active:ring-1 active:ring-primary",
         destructive:
           "bg-destructive text-destructive-foreground border border-destructive-border",
+        active:
+          "bg-[#47c8f5] text-white border-2 border-primary ring-1 ring-primary",
         outline:
           // Shows the background color of whatever card / sidebar / accent background it is inside of.
           // Inherits the current text color.

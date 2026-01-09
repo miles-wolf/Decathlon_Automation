@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Upload, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw } from "lucide-react";
+import { ArrowLeft, Play, Download, Upload, Save, FileSpreadsheet, Plus, X, ExternalLink, Copy, Users, Calendar, Settings, FileText, BarChart3, ScrollText, ChevronDown, RefreshCw, Trash2 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -2229,6 +2229,22 @@ export default function LunchtimeJobs() {
                   >
                     <Play className="h-4 w-4 mr-2" />
                     {isGenerating ? "Generating..." : "Generate Assignments"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSessionDefaults(createDefaultSessionDefaults());
+                      const newConfigs: WeekConfig[] = [];
+                      for (let i = 1; i <= numberOfWeeks; i++) {
+                        newConfigs.push(createDefaultWeekConfig(i));
+                      }
+                      setWeekConfigs(newConfigs);
+                    }}
+                    disabled={isGenerating}
+                    data-testid="button-clear-inputs"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Clear Inputs
                   </Button>
                 </div>
               </CardContent>

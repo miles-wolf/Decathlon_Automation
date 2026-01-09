@@ -1,4 +1,4 @@
-import { ArrowLeft, Play, Download, Upload, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus, AlertTriangle, Check } from "lucide-react";
+import { ArrowLeft, Play, Download, Upload, Users, Calendar, ExternalLink, Clock, Plus, X, Settings, UserMinus, UserPlus, AlertTriangle, Check, Trash2 } from "lucide-react";
 import { useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -1219,14 +1219,30 @@ export default function AMPMJobs() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  data-testid="button-generate"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  {isGenerating ? "Generating..." : "Generate Assignments"}
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={isGenerating}
+                    data-testid="button-generate"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    {isGenerating ? "Generating..." : "Generate Assignments"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setHardcodedAssignments([]);
+                      setCustomAssignments([]);
+                      setStaffToRemove([]);
+                      setStaffToAdd([]);
+                    }}
+                    disabled={isGenerating}
+                    data-testid="button-clear-inputs"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Clear Inputs
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}

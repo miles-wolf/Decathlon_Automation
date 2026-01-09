@@ -1390,6 +1390,7 @@ export default function AMPMJobs() {
                   <div className="flex flex-wrap gap-3 pt-4 border-t">
                     <Button
                       variant="outline"
+                      size="sm"
                       onClick={handleDownloadCSV}
                       className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                       data-testid="button-download-output"
@@ -1398,6 +1399,17 @@ export default function AMPMJobs() {
                       Download Output CSV
                     </Button>
                     <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDownloadConfig}
+                      className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                      data-testid="button-download-config"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Config
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => {
                         const url = `https://docs.google.com/spreadsheets/d/${import.meta.env.VITE_GOOGLE_SHEETS_ID || "1WFWFo55mfQlyto-SBnAcFOqUIt_kyvaHdpcjamBzXb4"}/edit`;
                         window.open(url, "_blank");
@@ -1407,15 +1419,6 @@ export default function AMPMJobs() {
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       View Google Sheet
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleDownloadConfig}
-                      className="border-2 border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                      data-testid="button-download-config"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download Config
                     </Button>
                   </div>
                 )}

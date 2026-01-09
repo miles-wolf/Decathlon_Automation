@@ -8,17 +8,26 @@ export default function About() {
   const lastUpdated = "January 2026";
   const version = "1.0.0";
 
-  // Scroll to hash on page load
+  // Scroll to hash on page load and hash changes
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash) {
-      const element = document.querySelector(hash);
-      if (element) {
-        setTimeout(() => {
-          element.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 100);
+    const scrollToHash = () => {
+      const hash = window.location.hash;
+      if (hash) {
+        const element = document.querySelector(hash);
+        if (element) {
+          setTimeout(() => {
+            element.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 100);
+        }
       }
-    }
+    };
+
+    // Scroll on initial load
+    scrollToHash();
+
+    // Listen for hash changes (when clicking footer links while on About page)
+    window.addEventListener("hashchange", scrollToHash);
+    return () => window.removeEventListener("hashchange", scrollToHash);
   }, []);
 
   return (

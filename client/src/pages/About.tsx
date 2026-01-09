@@ -128,7 +128,7 @@ export default function About() {
           </Card>
 
           {/* Privacy Section */}
-          <Card id="privacy" className="scroll-mt-6">
+          <Card id="privacy" className="scroll-mt-20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5 text-primary" />
@@ -167,7 +167,7 @@ export default function About() {
           </Card>
 
           {/* Terms Section */}
-          <Card id="terms" className="scroll-mt-6">
+          <Card id="terms" className="scroll-mt-20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5 text-primary" />
@@ -202,7 +202,7 @@ export default function About() {
           </Card>
 
           {/* Support Section */}
-          <Card id="support" className="scroll-mt-6">
+          <Card id="support" className="scroll-mt-20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <HelpCircle className="h-5 w-5 text-primary" />

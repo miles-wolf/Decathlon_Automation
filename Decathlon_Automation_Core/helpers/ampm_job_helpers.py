@@ -836,9 +836,18 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=Non
     if session_id:
         try:
             from Decathlon_Automation_Core.connections import db_connections as dbc
-            # Load credentials
-            if 'POSTGRES_DB' in os.environ:
-                # Use environment variables
+            # Load credentials - check for Replit env vars first (PGDATABASE), then POSTGRES_*, then credentials.json
+            if 'PGDATABASE' in os.environ:
+                # Use Replit environment variables
+                creds = {
+                    'db_name': os.environ.get('PGDATABASE'),
+                    'user': os.environ.get('PGUSER'),
+                    'password': os.environ.get('PGPASSWORD'),
+                    'host': os.environ.get('PGHOST'),
+                    'port': os.environ.get('PGPORT')
+                }
+            elif 'POSTGRES_DB' in os.environ:
+                # Use POSTGRES_* environment variables
                 creds = {
                     'db_name': os.environ.get('POSTGRES_DB'),
                     'user': os.environ.get('POSTGRES_USER'),

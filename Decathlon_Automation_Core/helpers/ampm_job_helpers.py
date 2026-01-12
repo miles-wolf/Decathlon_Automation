@@ -709,7 +709,7 @@ def build_ampm_job_assignments(conn, cur, session_id, directory=None, filename=N
     return df_assignments
 
 
-def export_ampm_assignments(df_assignments, output_dir='exports'):
+def export_ampm_assignments(df_assignments, session_id=None, output_dir='exports'):
     """
     Export AM/PM job assignments to CSV and Google Sheets.
     
@@ -717,6 +717,8 @@ def export_ampm_assignments(df_assignments, output_dir='exports'):
     ----------
     df_assignments : pd.DataFrame
         Assignment dataframe
+    session_id : int, optional
+        Session ID for title generation
     output_dir : str, optional
         Directory name to save CSV files (default: 'exports' in base directory)
     """
@@ -758,7 +760,8 @@ def export_ampm_assignments(df_assignments, output_dir='exports'):
         upload_to_google_sheets(
             csv_file=str(csv_path),
             spreadsheet_id=spreadsheet_id,
-            sheet_name='AM/PM Jobs'
+            sheet_name='AM/PM Jobs',
+            session_id=session_id
         )
         
         print(f"✓ Uploaded to Google Sheets tab: 'AM/PM Jobs'")
@@ -767,9 +770,9 @@ def export_ampm_assignments(df_assignments, output_dir='exports'):
         print(f"⚠️  Error uploading to Google Sheets: {e}")
 
 
-def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name):
+def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=None):
     """
-    Upload CSV to Google Sheets.
+    Upload CSV to Google Sheets with optional title row.
     
     Parameters
     ----------
@@ -779,6 +782,8 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name):
         Google Sheets spreadsheet ID
     sheet_name : str
         Name of the sheet tab
+    session_id : int, optional
+        Session ID to include in title row
     """
     # Try environment variables first (Replit), then fall back to credentials.json (local)
     service_account_info = None
@@ -825,15 +830,104 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name):
     df = pd.read_csv(csv_file)
     df = df.fillna('')
     
+    # Get session info from database if session_id is provided
+    session_number = None
+    session_year = None
+    if session_id:
+        try:
+            from Decathlon_Automation_Core.connections import db_connections as dbc
+            # Load credentials
+            if 'POSTGRES_DB' in os.environ:
+                # Use environment variables
+                creds = {
+                    'db_name': os.environ.get('POSTGRES_DB'),
+                    'user': os.environ.get('POSTGRES_USER'),
+                    'password': os.environ.get('POSTGRES_PASSWORD'),
+                    'host': os.environ.get('POSTGRES_HOST'),
+                    'port': os.environ.get('POSTGRES_PORT')
+                }
+            else:
+                # Use credentials.json
+                base_dir = Path(__file__).resolve().parents[1]
+                creds_file = base_dir / "config" / "credentials.json"
+                with open(creds_file, 'r') as f:
+                    creds_data = json.load(f)
+                    # Try different possible keys for database credentials
+                    if 'database' in creds_data:
+                        creds = creds_data['database']
+                    elif 'postgres' in creds_data:
+                        creds = creds_data['postgres']
+                    elif 'postgresql' in creds_data:
+                        creds = creds_data['postgresql']
+                    else:
+                        raise KeyError(f"No database credentials found in credentials.json. Available keys: {list(creds_data.keys())}")
+            
+            conn, _ = dbc.connect_to_postgres(
+                creds['db_name'], creds['user'], creds['password'],
+                creds['host'], creds['port']
+            )
+            
+            if conn:
+                session_query = f"SELECT session_number, start_date FROM camp.session WHERE id = {session_id}"
+                session_df = pd.read_sql(session_query, conn)
+                if len(session_df) > 0:
+                    session_number = session_df['session_number'].iloc[0]
+                    start_date = session_df['start_date'].iloc[0]
+                    session_year = pd.to_datetime(start_date).year
+                    print(f"Found session number: {session_number}, year: {session_year} for session_id: {session_id}")
+                conn.close()
+        except Exception as e:
+            print(f"Warning: Could not retrieve session info: {e}")
+    
+    # Build title header if session_number is provided
+    title_rows = []
+    if session_number:
+        if session_year:
+            title_text = f"AM/PM Job Assignments - Session {session_number} ({session_year})"
+        else:
+            title_text = f"AM/PM Job Assignments - Session {session_number}"
+        # Title row with text in first column, rest empty
+        title_row = [title_text] + [''] * (len(df.columns) - 1)
+        # Blank row after title
+        blank_row = [''] * len(df.columns)
+        title_rows = [title_row, blank_row]
+    
     # Convert DataFrame to list of lists for Google Sheets API
-    values = [df.columns.tolist()] + df.values.tolist()
+    values = title_rows + [df.columns.tolist()] + df.values.tolist()
+    
+    # Pass flag to formatting function to indicate if title is present
+    has_title_rows = len(title_rows) > 0
     
     # Try to clear existing data (create sheet if it doesn't exist)
     try:
+        # Clear values
         service.spreadsheets().values().clear(
             spreadsheetId=spreadsheet_id,
             range=f"{sheet_name}!A1:ZZ"
         ).execute()
+        
+        # Get sheet ID for clearing formats
+        sheet_id = _get_sheet_id(service, spreadsheet_id, sheet_name)
+        if sheet_id is not None:
+            # Clear all formatting and merges
+            clear_requests = [
+                # Unmerge all cells
+                {
+                    'unmergeCells': {
+                        'range': {
+                            'sheetId': sheet_id
+                        }
+                    }
+                }
+            ]
+            try:
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={'requests': clear_requests}
+                ).execute()
+            except:
+                # If unmerge fails, it's fine - no cells were merged
+                pass
     except HttpError:
         # Sheet might not exist, create it
         _create_sheet(service, spreadsheet_id, sheet_name)
@@ -847,8 +941,8 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name):
         body=body
     ).execute()
     
-    # Apply basic formatting
-    _format_ampm_sheet(service, spreadsheet_id, sheet_name, len(values), len(values[0]))
+    # Apply basic formatting, passing the actual data values for dynamic row sizing
+    _format_ampm_sheet(service, spreadsheet_id, sheet_name, len(values), len(values[0]), has_title_rows, values)
 
 
 def _create_sheet(service, spreadsheet_id, sheet_name):
@@ -884,77 +978,190 @@ def _get_sheet_id(service, spreadsheet_id, sheet_name):
     return None
 
 
-def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols):
-    """Apply basic formatting to the AM/PM sheet."""
+def add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows):
+    """
+    Add the Decathlon Sports Club logo to the bottom-left corner of the sheet.
+    Uses a publicly hosted image URL to avoid Drive API limitations.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab
+    num_rows : int
+        Current number of rows in the sheet (to position logo below content)
+    """
+    try:
+        # Get sheet ID
+        sheet_id = _get_sheet_id(service, spreadsheet_id, sheet_name)
+        if sheet_id is None:
+            print(f"  Warning: Could not find sheet ID for '{sheet_name}'")
+            return
+        
+        # Use a publicly hosted logo URL
+        # You can replace this with your own hosted logo URL if needed
+        # Options:
+        # 1. Upload to GitHub and use raw URL
+        # 2. Upload to Imgur and use direct link
+        # 3. Upload to Google Drive, make it public, and use the sharing URL
+        # 4. Host on your own web server
+        
+        # Check if custom logo URL is configured
+        logo_url = os.environ.get('DECATHLON_LOGO_URL')
+        
+        if not logo_url:
+            # Try to load from credentials.json
+            base_dir = Path(__file__).resolve().parents[1]
+            creds_file = base_dir / "config" / "credentials.json"
+            
+            try:
+                with open(creds_file, 'r') as f:
+                    creds_data = json.load(f)
+                    logo_url = creds_data.get('logo_url')
+            except:
+                pass
+        
+        if not logo_url:
+            print(f"  ℹ Logo URL not configured. To add logo:")
+            print(f"    1. Upload decathlon_logo.png to a public location (GitHub, Imgur, etc.)")
+            print(f"    2. Add 'logo_url' to credentials.json or set DECATHLON_LOGO_URL environment variable")
+            return
+        
+        # Calculate position (bottom-left corner, below the table)
+        row_position = num_rows + 1
+        num_rows_to_merge = 5  # Merge 5 rows for logo (matches lunchtime jobs)
+        
+        # First, try to unmerge any existing merges in the logo area to avoid conflicts
+        try:
+            unmerge_request = {
+                'unmergeCells': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': row_position,
+                        'endRowIndex': row_position + num_rows_to_merge,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 1
+                    }
+                }
+            }
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={'requests': [unmerge_request]}
+            ).execute()
+        except:
+            # If unmerge fails, it's fine - cells weren't merged
+            pass
+        
+        # Add the image to the sheet and merge cells vertically
+        requests = [
+        # First, merge cells vertically for the logo
+        {
+            'mergeCells': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_position,
+                    'endRowIndex': row_position + num_rows_to_merge,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 1
+                },
+                'mergeType': 'MERGE_ALL'
+            }
+        },
+        # Then add the image to the merged cell
+        {
+            'updateCells': {
+                'rows': [{
+                    'values': [{
+                        'userEnteredValue': {
+                            'formulaValue': f'=IMAGE("{logo_url}", 1)'
+                        },
+                        'userEnteredFormat': {
+                            'verticalAlignment': 'TOP'
+                        }
+                    }]
+                }],
+                'fields': 'userEnteredValue,userEnteredFormat.verticalAlignment',
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_position,
+                    'endRowIndex': row_position + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 1
+                }
+            }
+        }]
+        
+        body = {'requests': requests}
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute()
+        
+        print(f"  ✓ Logo added to bottom-left corner at row {row_position + 1}")
+        
+    except Exception as e:
+        error_msg = str(e)
+        if 'Drive API has not been used' in error_msg or 'accessNotConfigured' in error_msg:
+            print(f"  ⓘ Logo not added: Google Drive API is not enabled")
+            print(f"  To enable it (one-time setup):")
+            print(f"  1. Visit: https://console.developers.google.com/apis/api/drive.googleapis.com")
+            print(f"  2. Select your project and click 'Enable'")
+            print(f"  3. Wait 1-2 minutes and re-run the pipeline")
+        else:
+            print(f"  Warning: Could not add logo to sheet: {e}")
+
+
+def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, has_title, values):
+    """
+    Apply formatting to the AM/PM Jobs sheet.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab
+    num_rows : int
+        Number of rows in the sheet (including title rows if present)
+    num_cols : int
+        Number of columns in the sheet
+    has_title : bool
+        Whether title rows are present
+    values : list
+        The actual data values to analyze for dynamic row sizing
+    """
     sheet_id = _get_sheet_id(service, spreadsheet_id, sheet_name)
     
     if sheet_id is None:
         return
     
+    # Determine row indices based on whether title is present
+    title_rows = 2 if has_title else 0
+    header_row_idx = title_rows
+    data_start_idx = header_row_idx + 1
+    
+    # Calculate optimal data row height to fit on 2 pages (max)
+    # Actual page height appears to be larger than initially calculated
+    # Allowing more space for descriptions to display fully
+    MAX_PAGES = 2
+    
+    # Fixed heights
+    title_height = 60 if has_title else 0
+    blank_height = 21 if has_title else 0
+    header_height = 40
+    
+    # Use 30px rows as base (allows descriptions to display without cutting off)
+    data_row_height = 30
+    
+    num_data_rows = num_rows - data_start_idx
+    
     requests = [
-        # Format header row
-        {
-            'repeatCell': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'startRowIndex': 0,
-                    'endRowIndex': 1,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': num_cols
-                },
-                'cell': {
-                    'userEnteredFormat': {
-                        'backgroundColor': {'red': 0.2, 'green': 0.5, 'blue': 0.8},
-                        'textFormat': {
-                            'bold': True,
-                            'fontSize': 14,
-                            'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}
-                        },
-                        'horizontalAlignment': 'CENTER',
-                        'verticalAlignment': 'MIDDLE'
-                    }
-                },
-                'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
-            }
-        },
-        # Format data rows
-        {
-            'repeatCell': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'startRowIndex': 1,
-                    'endRowIndex': num_rows,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': num_cols
-                },
-                'cell': {
-                    'userEnteredFormat': {
-                        'textFormat': {
-                            'fontSize': 12
-                        },
-                        'verticalAlignment': 'TOP'
-                    }
-                },
-                'fields': 'userEnteredFormat(textFormat,verticalAlignment)'
-            }
-        },
-        # Add borders
-        {
-            'updateBorders': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'startRowIndex': 0,
-                    'endRowIndex': num_rows,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': num_cols
-                },
-                'top': {'style': 'SOLID', 'width': 1, 'color': {'red': 0, 'green': 0, 'blue': 0}},
-                'bottom': {'style': 'SOLID', 'width': 1, 'color': {'red': 0, 'green': 0, 'blue': 0}},
-                'left': {'style': 'SOLID', 'width': 1, 'color': {'red': 0, 'green': 0, 'blue': 0}},
-                'right': {'style': 'SOLID', 'width': 1, 'color': {'red': 0, 'green': 0, 'blue': 0}}
-            }
-        },
-        # Set column widths
+        # Set column widths (Description column maximized for one-page fit)
         {
             'updateDimensionProperties': {
                 'range': {
@@ -964,7 +1171,7 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols):
                     'endIndex': 1
                 },
                 'properties': {
-                    'pixelSize': 200
+                    'pixelSize': 180
                 },
                 'fields': 'pixelSize'
             }
@@ -978,7 +1185,7 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols):
                     'endIndex': 2
                 },
                 'properties': {
-                    'pixelSize': 250
+                    'pixelSize': 220
                 },
                 'fields': 'pixelSize'
             }
@@ -992,47 +1199,375 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols):
                     'endIndex': 3
                 },
                 'properties': {
-                    'pixelSize': 800
+                    'pixelSize': 1200
                 },
                 'fields': 'pixelSize'
             }
-        },
-        # Wrap text in instructions column (column C, index 2)
-        {
+        }
+    ]
+    
+    # Set row heights depending on whether title is present
+    if has_title:
+        # Title row height (calculated for 2-page fit)
+        requests.append({
+            'updateDimensionProperties': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'dimension': 'ROWS',
+                    'startIndex': 0,
+                    'endIndex': 1
+                },
+                'properties': {
+                    'pixelSize': title_height
+                },
+                'fields': 'pixelSize'
+            }
+        })
+        # Blank row after title (calculated for 2-page fit)
+        requests.append({
+            'updateDimensionProperties': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'dimension': 'ROWS',
+                    'startIndex': 1,
+                    'endIndex': 2
+                },
+                'properties': {
+                    'pixelSize': blank_height
+                },
+                'fields': 'pixelSize'
+            }
+        })
+    
+    # Header row height (calculated for 2-page fit)
+    requests.append({
+        'updateDimensionProperties': {
+            'range': {
+                'sheetId': sheet_id,
+                'dimension': 'ROWS',
+                'startIndex': header_row_idx,
+                'endIndex': header_row_idx + 1
+            },
+            'properties': {
+                'pixelSize': header_height
+            },
+            'fields': 'pixelSize'
+        }
+    })
+    
+    # Calculate dynamic row heights based on content
+    # Column widths: Staff Name=180px, Job=220px, Instructions=1200px
+    # Average character width in Google Sheets is approximately 7 pixels at default font size
+    # Using conservative estimate to account for word wrapping
+    CHAR_WIDTH_PX = 8  # More conservative to account for word breaks
+    COLUMN_WIDTHS = [180, 220, 1200]  # Staff Name, Job, Instructions
+    
+    # Set individual row heights for data rows based on content
+    for i in range(data_start_idx, num_rows):
+        if i < len(values):
+            row_data = values[i]
+            max_lines = 1
+            
+            # Check each column to see how many lines it needs
+            for col_idx in range(min(3, len(row_data))):
+                cell_text = str(row_data[col_idx]) if row_data[col_idx] else ""
+                if len(cell_text) > 0:
+                    col_width = COLUMN_WIDTHS[col_idx]
+                    chars_per_line = col_width // CHAR_WIDTH_PX
+                    # Account for word wrapping by reducing effective line width
+                    chars_per_line = int(chars_per_line * 0.85)  # 15% buffer for word breaks
+                    
+                    # Calculate lines needed for this cell
+                    lines_for_cell = max(1, (len(cell_text) + chars_per_line - 1) // chars_per_line)
+                    max_lines = max(max_lines, lines_for_cell)
+            
+            # Calculate row height: 1 line=30px, 2 lines=50px, 3 lines=70px
+            # Formula: 10 + lines_needed * 20
+            row_height = 10 + (max_lines * 20)
+            
+            # Set this row's height
+            requests.append({
+                'updateDimensionProperties': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'dimension': 'ROWS',
+                        'startIndex': i,
+                        'endIndex': i + 1
+                    },
+                    'properties': {
+                        'pixelSize': row_height
+                    },
+                    'fields': 'pixelSize'
+                }
+            })
+    
+    # Format title row if present
+    if has_title:
+        # Format title row with all properties in one request
+        title_format = {
+            'repeatCell': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': 0,
+                    'endRowIndex': 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},
+                        'textFormat': {
+                            'bold': True,
+                            'fontSize': 18,
+                            'foregroundColor': {'red': 0, 'green': 0, 'blue': 0}
+                        },
+                        'horizontalAlignment': 'CENTER',
+                        'verticalAlignment': 'MIDDLE'
+                    }
+                },
+                'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+            }
+        }
+        requests.append(title_format)
+        
+        # Merge title row cells
+        merge_title = {
+            'mergeCells': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': 0,
+                    'endRowIndex': 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'mergeType': 'MERGE_ALL'
+            }
+        }
+        requests.append(merge_title)
+        
+        # Ensure blank row (row 1) has white background and is not formatted like header
+        blank_row_format = {
             'repeatCell': {
                 'range': {
                     'sheetId': sheet_id,
                     'startRowIndex': 1,
-                    'endRowIndex': num_rows,
-                    'startColumnIndex': 2,
-                    'endColumnIndex': 3
+                    'endRowIndex': 2,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
                 },
                 'cell': {
                     'userEnteredFormat': {
-                        'wrapStrategy': 'WRAP'
+                        'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0}
                     }
                 },
-                'fields': 'userEnteredFormat.wrapStrategy'
+                'fields': 'userEnteredFormat.backgroundColor'
             }
-        },
-        # Freeze header row
-        {
+        }
+        requests.append(blank_row_format)
+    
+    # Format header row (matching lunchtime jobs blue: RGB 0.75, 0.9, 1.0)
+    header_format = {
+        'repeatCell': {
+            'range': {
+                'sheetId': sheet_id,
+                'startRowIndex': header_row_idx,
+                'endRowIndex': header_row_idx + 1,
+                'startColumnIndex': 0,
+                'endColumnIndex': num_cols
+            },
+            'cell': {
+                'userEnteredFormat': {
+                    'backgroundColor': {'red': 0.75, 'green': 0.9, 'blue': 1.0},
+                    'textFormat': {
+                        'bold': True,
+                        'fontSize': 14,
+                        'foregroundColor': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'horizontalAlignment': 'CENTER',
+                    'verticalAlignment': 'MIDDLE'
+                }
+            },
+            'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+        }
+    }
+    requests.append(header_format)
+    
+    # Format data rows with wrap enabled
+    data_format = {
+        'repeatCell': {
+            'range': {
+                'sheetId': sheet_id,
+                'startRowIndex': data_start_idx,
+                'endRowIndex': num_rows,
+                'startColumnIndex': 0,
+                'endColumnIndex': num_cols
+            },
+            'cell': {
+                'userEnteredFormat': {
+                    'textFormat': {
+                        'fontSize': 12
+                    },
+                    'verticalAlignment': 'TOP',
+                    'wrapStrategy': 'WRAP'
+                }
+            },
+            'fields': 'userEnteredFormat(textFormat,verticalAlignment,wrapStrategy)'
+        }
+    }
+    requests.append(data_format)
+    
+    # Add thin borders (1px) to all cells in table including inner borders
+    thin_borders = {
+        'updateBorders': {
+            'range': {
+                'sheetId': sheet_id,
+                'startRowIndex': header_row_idx,
+                'endRowIndex': num_rows,
+                'startColumnIndex': 0,
+                'endColumnIndex': num_cols
+            },
+            'top': {
+                'style': 'SOLID',
+                'width': 1,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'bottom': {
+                'style': 'SOLID',
+                'width': 1,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'left': {
+                'style': 'SOLID',
+                'width': 1,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'right': {
+                'style': 'SOLID',
+                'width': 1,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'innerHorizontal': {
+                'style': 'SOLID',
+                'width': 1,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'innerVertical': {
+                'style': 'SOLID',
+                'width': 1,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            }
+        }
+    }
+    requests.append(thin_borders)
+    
+    # Add thick outer border (3px) around the table
+    thick_outer_border = {
+        'updateBorders': {
+            'range': {
+                'sheetId': sheet_id,
+                'startRowIndex': header_row_idx,
+                'endRowIndex': num_rows,
+                'startColumnIndex': 0,
+                'endColumnIndex': num_cols
+            },
+            'top': {
+                'style': 'SOLID',
+                'width': 3,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'bottom': {
+                'style': 'SOLID',
+                'width': 3,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'left': {
+                'style': 'SOLID',
+                'width': 3,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            },
+            'right': {
+                'style': 'SOLID',
+                'width': 3,
+                'color': {'red': 0, 'green': 0, 'blue': 0}
+            }
+        }
+    }
+    requests.append(thick_outer_border)
+    
+    # Freeze header row only (not title rows)
+    freeze_row = {
+        'updateSheetProperties': {
+            'properties': {
+                'sheetId': sheet_id,
+                'gridProperties': {
+                    'frozenRowCount': header_row_idx + 1
+                }
+            },
+            'fields': 'gridProperties.frozenRowCount'
+        }
+    }
+    requests.append(freeze_row)
+    
+    # Set print settings to repeat header row on all pages
+    if has_title:
+        # Only repeat the header row on printed pages, not the title
+        repeat_rows = {
             'updateSheetProperties': {
                 'properties': {
                     'sheetId': sheet_id,
                     'gridProperties': {
-                        'frozenRowCount': 1
+                        'frozenRowCount': header_row_idx + 1
                     }
                 },
                 'fields': 'gridProperties.frozenRowCount'
             }
         }
-    ]
+        # Set the repeating rows for printing (header row only)
+        set_repeat_rows = {
+            'setBasicFilter': {
+                'filter': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': header_row_idx,
+                        'endRowIndex': num_rows,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': num_cols
+                    }
+                }
+            }
+        }
     
     body = {'requests': requests}
-    service.spreadsheets().batchUpdate(
+    result = service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=body
     ).execute()
-
-
+    
+    # Set print repeat rows separately (this controls what shows on each printed page)
+    if has_title:
+        try:
+            # Update sheet properties to set repeated rows for printing
+            repeat_request = {
+                'requests': [{
+                    'updateSheetProperties': {
+                        'properties': {
+                            'sheetId': sheet_id,
+                            'gridProperties': {
+                                'frozenRowCount': header_row_idx + 1,
+                                'frozenColumnCount': 0
+                            }
+                        },
+                        'fields': 'gridProperties(frozenRowCount,frozenColumnCount)'
+                    }
+                }]
+            }
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body=repeat_request
+            ).execute()
+        except Exception as e:
+            print(f"  Note: Could not set print repeat rows: {e}")
+    
+    # Add logo to bottom-left corner
+    print("  Adding Decathlon logo...")
+    add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows)

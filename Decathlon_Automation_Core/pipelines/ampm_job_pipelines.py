@@ -50,7 +50,7 @@ def run_ampmjob_pipeline(session_id: int):
     print(df_assignments)
 
     # Export to CSV and Google Sheets
-    apjh.export_ampm_assignments(df_assignments)
+    apjh.export_ampm_assignments(df_assignments, session_id=session_id)
 
     print("\n" + "="*80)
     print("AM/PM JOB ASSIGNMENT COMPLETE")

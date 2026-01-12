@@ -463,7 +463,7 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
     ## Process tie dye assignments (staff work on their A/B pattern days only)
     # NOTE: Pattern balancing for tie dye is now done at SESSION level in build_multi_week_schedule()
     # This ensures pattern flips apply to ALL weeks, not just the tie dye week
-    if tie_dye_days and tie_dye_staff:
+    if tie_dye_days:
         tie_dye_job_id = 1045  # Tie Dye job ID
         tie_dye_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == tie_dye_job_id].iloc[0]
         
@@ -471,9 +471,8 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
         non_staff_game_tie_dye_days = [day for day in tie_dye_days 
                                        if not (staff_game_days and day in staff_game_days)]
         
-        # Add Arts & Crafts staff to tie dye staff (they work tie dye instead of arts & crafts)
+        # ALWAYS add Arts & Crafts staff to tie dye staff (they work tie dye instead of arts & crafts)
         # Get arts & crafts staff from custom_job_assignments
-        arts_and_crafts_staff = []
         if custom_job_assignments and 'all_days' in custom_job_assignments:
             # Try both string and int keys (JSON keys are strings)
             arts_and_crafts_staff = custom_job_assignments['all_days'].get('1001', 
@@ -485,28 +484,30 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
                         tie_dye_staff.append(staff_id)
                         print(f"  Adding Arts & Crafts staff {staff_id} to tie dye on their pattern days")
         
-        # Assign staff to days based on their pattern
-        for staff_id in tie_dye_staff:
-            staff_matches = df_staff_clean[df_staff_clean['staff_id'] == staff_id]
-            if len(staff_matches) == 0:
-                print(f"Warning: Staff {staff_id} not found in eligible staff list")
-                continue
-            
-            staff_row = staff_matches.iloc[0]
-            staff_pattern = staff_row['actual_assignment']
-            
-            # Assign to days where their pattern matches
-            for day in non_staff_game_tie_dye_days:
-                day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+        # Only proceed if we have tie dye staff (either from config or from A&C)
+        if tie_dye_staff:
+            # Assign staff to days based on their pattern
+            for staff_id in tie_dye_staff:
+                staff_matches = df_staff_clean[df_staff_clean['staff_id'] == staff_id]
+                if len(staff_matches) == 0:
+                    print(f"Warning: Staff {staff_id} not found in eligible staff list")
+                    continue
                 
-                if staff_pattern == day_pattern:
-                    hardcoded_assignments.append({
-                        'day_name': day,
-                        'staff_id': staff_id,
-                        'job_id': tie_dye_job_id,
-                        'job_code': tie_dye_job_info['job_code'],
-                        'job_name': tie_dye_job_info['job_name']
-                    })
+                staff_row = staff_matches.iloc[0]
+                staff_pattern = staff_row['actual_assignment']
+                
+                # Assign to days where their pattern matches
+                for day in non_staff_game_tie_dye_days:
+                    day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
+                    
+                    if staff_pattern == day_pattern:
+                        hardcoded_assignments.append({
+                            'day_name': day,
+                            'staff_id': staff_id,
+                            'job_id': tie_dye_job_id,
+                            'job_code': tie_dye_job_info['job_code'],
+                            'job_name': tie_dye_job_info['job_name']
+                        })
     
     # Process custom job assignments (fixed indentation - should be outside tie_dye block)
     if custom_job_assignments:
@@ -629,12 +630,11 @@ def process_hardcoded_assignments(pattern_based_jobs, staff_game_days, tie_dye_d
     return df_hardcoded, df_staff_clean
 
 ##section code author miles
-def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, df_lunch_jobs):
+def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, df_lunch_jobs, tie_dye_days=None):
     """
     Ensures that Counselor Activity (job_id: 1077) has:
-    - 1-2 counselors (role_id: 1005)
-    - 1-2 junior counselors (role_id: 1006)
-    - Never all 3 of one role
+    - Regular days: 1-2 counselors (role_id: 1005) + 1-2 junior counselors (role_id: 1006), never all 3 of one role
+    - Tie dye days: Exactly 1 counselor + 0 JCs
     
     This function validates and fixes counselor activity assignments to meet role mix requirements.
     It uses multiple strategies to swap staff to achieve proper role balance.
@@ -643,6 +643,7 @@ def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, d
     - df_all_assignments: dataframe of all assignments
     - df_staff_clean: cleaned staff dataframe with role information
     - df_lunch_jobs: lunch jobs dataframe
+    - tie_dye_days: list of day names when tie dye occurs (optional)
     
     Returns:
     - df_all_assignments: updated assignments with role mix requirement met
@@ -650,6 +651,9 @@ def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, d
     COUNSELOR_ACTIVITY_JOB_ID = 1005
     COUNSELOR_ROLE_ID = 1005
     JUNIOR_COUNSELOR_ROLE_ID = 1006
+    
+    # Normalize tie_dye_days for case-insensitive comparison
+    tie_dye_days_lower = [day.lower() for day in tie_dye_days] if tie_dye_days else []
     
     # Check if counselor activity exists in assignments
     counselor_activity_assignments = df_all_assignments[
@@ -664,10 +668,14 @@ def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, d
     ca_days = counselor_activity_assignments['day_name'].unique()
     
     print(f"\n{'='*80}")
-    print(f"VALIDATING COUNSELOR ACTIVITY ROLE MIX (Need 1-2 C + 1-2 JC)")
+    print(f"VALIDATING COUNSELOR ACTIVITY ROLE MIX")
+    print(f"Regular days: Need 1-2 C + 1-2 JC | Tie Dye days: Need 1 C + 0 JC")
     print(f"{'='*80}")
     
     for day in ca_days:
+        # Check if this is a tie dye day
+        is_tie_dye_day = day.lower() in tie_dye_days_lower
+        
         # Get counselor activity assignments for this day
         day_ca_assignments = df_all_assignments[
             (df_all_assignments['day_name'].str.lower() == day.lower()) & 
@@ -686,26 +694,54 @@ def ensure_counselor_on_counselor_activity(df_all_assignments, df_staff_clean, d
         counselor_count = len(ca_staff_roles[ca_staff_roles['role_id'] == COUNSELOR_ROLE_ID])
         jc_count = len(ca_staff_roles[ca_staff_roles['role_id'] == JUNIOR_COUNSELOR_ROLE_ID])
         
-        print(f"\n{day}: Counselor Activity has {counselor_count} counselor(s), {jc_count} JC(s)")
+        day_type = "(TIE DYE)" if is_tie_dye_day else ""
+        print(f"\n{day} {day_type}: Counselor Activity has {counselor_count} counselor(s), {jc_count} JC(s)")
         
-        # Check if role mix is valid (1-2 of each, never all 3 of one role)
-        if counselor_count >= 1 and counselor_count <= 2 and jc_count >= 1 and jc_count <= 2:
-            print(f"   ✓ Role mix is valid")
-            continue
+        # Check if role mix is valid based on day type
+        if is_tie_dye_day:
+            # Tie dye days: exactly 1 counselor, 0 JCs
+            if counselor_count == 1 and jc_count == 0:
+                print(f"   ✓ Role mix is valid for tie dye day")
+                continue
+        else:
+            # Regular days: 1-2 of each, never all 3 of one role
+            if counselor_count >= 1 and counselor_count <= 2 and jc_count >= 1 and jc_count <= 2:
+                print(f"   ✓ Role mix is valid")
+                continue
         
         # Need to fix the role mix
-        if counselor_count == 0:
-            print(f"   ⚠️  FIXING: No counselors - need to swap in at least 1 counselor")
-            needed_role = COUNSELOR_ROLE_ID
-            excess_role = JUNIOR_COUNSELOR_ROLE_ID
-        elif jc_count == 0:
-            print(f"   ⚠️  FIXING: No JCs - need to swap in at least 1 JC")
-            needed_role = JUNIOR_COUNSELOR_ROLE_ID
-            excess_role = COUNSELOR_ROLE_ID
+        if is_tie_dye_day:
+            # Tie dye day: need exactly 1 counselor, 0 JCs
+            if counselor_count == 0:
+                print(f"   ⚠️  FIXING: No counselors on tie dye day - need exactly 1 counselor")
+                needed_role = COUNSELOR_ROLE_ID
+                excess_role = JUNIOR_COUNSELOR_ROLE_ID
+            elif jc_count > 0:
+                print(f"   ⚠️  FIXING: JCs present on tie dye day - need to remove all JCs")
+                needed_role = COUNSELOR_ROLE_ID
+                excess_role = JUNIOR_COUNSELOR_ROLE_ID
+            elif counselor_count > 1:
+                print(f"   ⚠️  FIXING: Too many counselors on tie dye day - need exactly 1")
+                # Remove extra counselors (swap them out for anyone else)
+                needed_role = None  # Don't need to swap IN anyone specific
+                excess_role = COUNSELOR_ROLE_ID
+            else:
+                print(f"   ✓ Role counts are valid for tie dye day")
+                continue
         else:
-            # This should not happen, but just in case
-            print(f"   ✓ Role counts are within acceptable range")
-            continue
+            # Regular day logic
+            if counselor_count == 0:
+                print(f"   ⚠️  FIXING: No counselors - need to swap in at least 1 counselor")
+                needed_role = COUNSELOR_ROLE_ID
+                excess_role = JUNIOR_COUNSELOR_ROLE_ID
+            elif jc_count == 0:
+                print(f"   ⚠️  FIXING: No JCs - need to swap in at least 1 JC")
+                needed_role = JUNIOR_COUNSELOR_ROLE_ID
+                excess_role = COUNSELOR_ROLE_ID
+            else:
+                # This should not happen, but just in case
+                print(f"   ✓ Role counts are within acceptable range")
+                continue
         
         # Determine which pattern should be working this day
         day_pattern = 'A' if day.lower() in ['monday', 'wednesday'] else 'B'
@@ -1432,17 +1468,26 @@ def check_counselor_activity_status(df_all_assignments, df_staff_clean, checkpoi
         print(f"  {status} {day}: {counselor_count}C + {jc_count}JC (Staff: {staff_ids})")
 
 
-def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_hardcoded):
+def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_hardcoded, tie_dye_days=None):
     """
-    Pre-assign EXACTLY 1 counselor to counselor activity (job_id: 1077) for each day.
-    This counselor is LOCKED and cannot be reassigned or have their pattern changed.
+    Pre-assign counselor(s) to counselor activity (job_id: 1077) for each day.
+    - Regular days: 1 counselor + 1 JC (both LOCKED)
+    - Tie dye days: 1 counselor only (LOCKED), no JC
+    
+    This staff is LOCKED and cannot be reassigned or have their pattern changed.
     Before assigning, checks if counselor has hardcoded assignments (tie dye, arts & crafts, card trading).
     
+    Parameters:
+    - tie_dye_days: list of days when tie dye occurs (optional)
+    
     Returns:
-    - counselor_activity_assignments: list of assignment dicts (1 counselor + 1 JC per day, locked)
+    - counselor_activity_assignments: list of assignment dicts (locked)
     - locked_staff_days: dict of {staff_id: [list of locked days]} for completely locked assignments
     - staff_game_days: list of days with staff game
     """
+    # Normalize tie_dye_days to lowercase for case-insensitive comparison
+    tie_dye_days_lower = [d.lower() for d in tie_dye_days] if tie_dye_days else []
+    
     COUNSELOR_ACTIVITY_JOB_ID = 1005
     COUNSELOR_ROLE_ID = 1005
     JUNIOR_COUNSELOR_ROLE_ID = 1006
@@ -1461,10 +1506,15 @@ def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_har
     ca_job_info = df_lunch_jobs[df_lunch_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].iloc[0]
     
     print(f"\n{'='*80}")
-    print(f"PRE-ASSIGNING 1 COUNSELOR + 1 JC TO COUNSELOR ACTIVITY (LOCKED - CANNOT BE REASSIGNED)")
+    print(f"PRE-ASSIGNING COUNSELOR ACTIVITY (LOCKED - CANNOT BE REASSIGNED)")
+    print(f"Regular days: 1C + 1JC | Tie Dye days: 1C only")
     print(f"{'='*80}\n")
     
     for day in df_days['day_name'].unique():
+        # Check if this is a tie dye day
+        is_tie_dye_day = day.lower() in tie_dye_days_lower
+        day_type = " (TIE DYE)" if is_tie_dye_day else ""
+        
         # Skip staff game days
         if day in staff_game_days:
             print(f"{day}: Staff game day - skipping")
@@ -1514,11 +1564,7 @@ def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_har
         print(f"  Available: {len(available_counselors)} counselors, {len(available_jcs)} JCs (excluding protected jobs)")
         
         if len(available_counselors) < 1:
-            print(f"⚠️  {day}: No available counselors after excluding protected jobs!")
-            continue
-        
-        if len(available_jcs) < 1:
-            print(f"⚠️  {day}: No available JCs after excluding protected jobs!")
+            print(f"⚠️  {day}{day_type}: No available counselors after excluding protected jobs!")
             continue
         
         # Select exactly 1 counselor
@@ -1536,6 +1582,16 @@ def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_har
         # Lock this counselor for this day
         locked_staff_days.add((selected_counselor['staff_id'], day))
         
+        # On tie dye days, assign ONLY 1 counselor (no JC)
+        if is_tie_dye_day:
+            print(f"{day}{day_type}: LOCKED counselor {selected_counselor['staff_id']} to Counselor Activity (no JC on tie dye)")
+            continue
+        
+        # On regular days, also assign 1 JC
+        if len(available_jcs) < 1:
+            print(f"⚠️  {day}{day_type}: No available JCs after excluding protected jobs!")
+            continue
+        
         # Select exactly 1 JC
         selected_jc = available_jcs.sample(n=1).iloc[0]
         
@@ -1551,7 +1607,7 @@ def pre_assign_counselor_activity(df_staff_clean, df_days, df_lunch_jobs, df_har
         # Lock this JC for this day
         locked_staff_days.add((selected_jc['staff_id'], day))
         
-        print(f"{day}: LOCKED counselor {selected_counselor['staff_id']} + JC {selected_jc['staff_id']} to Counselor Activity")
+        print(f"{day}{day_type}: LOCKED counselor {selected_counselor['staff_id']} + JC {selected_jc['staff_id']} to Counselor Activity")
     
     print(f"\n{'='*80}\n")
     
@@ -1575,8 +1631,9 @@ def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcode
     all_assignments = []
     
     # Pre-assign 1 counselor to counselor activity for each day - LOCKED and cannot be reassigned
+    # On tie dye days, only 1 counselor (no JC)
     ca_assignments, locked_staff_days, staff_game_days = pre_assign_counselor_activity(
-        df_staff_clean, df_days, df_lunch_jobs, df_hardcoded
+        df_staff_clean, df_days, df_lunch_jobs, df_hardcoded, tie_dye_days
     )
     
     # Add counselor activity assignments to the all_assignments list
@@ -1622,16 +1679,28 @@ def assign_random_lunch_jobs(df_staff_clean, df_days, df_lunch_jobs, df_hardcode
             ~df_lunch_jobs['job_id'].isin(assigned_job_ids + jobs_to_exclude)
         ].copy()
         
-        # For Counselor Activity, adjust the normal_staff_assigned to account for pre-assigned staff (1C + 1JC)
+        # For Counselor Activity, adjust the normal_staff_assigned to account for pre-assigned staff
+        # - Regular days: 1C + 1JC pre-assigned, need (normal_staff_assigned - 2) more
+        # - Tie dye days: 1C pre-assigned, need 0 more (only 1 counselor total)
         COUNSELOR_ACTIVITY_JOB_ID = 1005
         ca_pre_assigned_count = len([a for a in day_ca_pre_assigned if a['day_name'] == day])
+        is_tie_dye_day = tie_dye_days and day in tie_dye_days
+        
         if ca_pre_assigned_count > 0 and COUNSELOR_ACTIVITY_JOB_ID in remaining_jobs['job_id'].values:
             ca_idx = remaining_jobs[remaining_jobs['job_id'] == COUNSELOR_ACTIVITY_JOB_ID].index
             if len(ca_idx) > 0:
                 current_normal = remaining_jobs.loc[ca_idx[0], 'normal_staff_assigned']
-                adjusted_normal = max(0, int(current_normal) - ca_pre_assigned_count)
+                
+                if is_tie_dye_day:
+                    # Tie dye days: only 1 counselor total, no more staff needed
+                    adjusted_normal = 0
+                    print(f"  Counselor Activity: {ca_pre_assigned_count} staff pre-assigned (LOCKED: 1C only for tie dye), need {adjusted_normal} more staff")
+                else:
+                    # Regular days: 1C + 1JC pre-assigned, fill remaining slots
+                    adjusted_normal = max(0, int(current_normal) - ca_pre_assigned_count)
+                    print(f"  Counselor Activity: {ca_pre_assigned_count} staff pre-assigned (LOCKED: 1C + 1JC), need {adjusted_normal} more staff")
+                
                 remaining_jobs.loc[ca_idx[0], 'normal_staff_assigned'] = adjusted_normal
-                print(f"  Counselor Activity: {ca_pre_assigned_count} staff pre-assigned (LOCKED: 1C + 1JC), need {adjusted_normal} more staff")
         
         # Get remaining staff (exclude hardcoded staff)
         remaining_staff = df_staff_clean[~df_staff_clean['staff_id'].isin(assigned_staff_ids)].copy()
@@ -4088,6 +4157,94 @@ def validate_final_schedule(all_week_assignments, configs, conn, session_id):
         print("✓ All hardcoded assignments were assigned correctly")
     
     # ========================================================================
+    # CHECK 4: All eligible staff are assigned
+    # ========================================================================
+    print("\n" + "-"*80)
+    print("CHECK 4: Staff Assignment Coverage Validation")
+    print("-"*80)
+    
+    # Get all eligible staff for this session
+    sql_eligible_staff = f"""
+    SELECT DISTINCT 
+        s.id AS staff_id,
+        CONCAT(s.first_name, ' ', s.last_name) AS staff_name,
+        sts.group_id,
+        sts.role_id
+    FROM camp.staff AS s
+    JOIN camp.staff_to_session AS sts ON s.id = sts.staff_id
+    WHERE sts.session_id = {session_id}
+      AND sts.role_id IN (1005, 1006)
+    ORDER BY s.id
+    """
+    df_eligible_staff = pd.read_sql(sql_eligible_staff, conn)
+    all_eligible_staff = set(df_eligible_staff['staff_id'].tolist())
+    
+    staff_coverage_issues = []
+    
+    for week_num, df_assignments in all_week_assignments:
+        # Get all staff assigned in this week
+        assigned_staff = set(df_assignments['staff_id'].unique())
+        
+        # Find staff who are eligible but not assigned at all
+        unassigned_staff = all_eligible_staff - assigned_staff
+        
+        if unassigned_staff:
+            for staff_id in unassigned_staff:
+                staff_info = df_eligible_staff[df_eligible_staff['staff_id'] == staff_id].iloc[0]
+                staff_coverage_issues.append({
+                    'week': week_num,
+                    'staff_id': staff_id,
+                    'staff_name': staff_info['staff_name'],
+                    'group_id': staff_info['group_id'],
+                    'role_id': staff_info['role_id'],
+                    'issue': 'Staff not assigned to any jobs'
+                })
+        
+        # Check if each assigned staff has assignments for all their working days
+        for staff_id in assigned_staff:
+            staff_assignments = df_assignments[df_assignments['staff_id'] == staff_id]
+            assigned_days = set(staff_assignments['day_name'].str.lower().unique())
+            
+            # Determine which days this staff should work (based on their pattern)
+            # Get the config for this week to check for staff_game_days
+            week_config = configs[week_num - 1] if week_num <= len(configs) else {}
+            staff_game_days = week_config.get('staff_game_days', [])
+            staff_game_days_lower = [d.lower() for d in staff_game_days]
+            
+            # Expected working days (Monday-Thursday, minus staff game days)
+            expected_days = set([d for d in ['monday', 'tuesday', 'wednesday', 'thursday'] 
+                                if d not in staff_game_days_lower])
+            
+            # Staff should have assignments on all expected days OR be on staff game
+            if assigned_days != expected_days:
+                # Check if they're on staff game (which is valid)
+                is_on_staff_game = any(a['job_id'] == 1100 for _, a in staff_assignments.iterrows())
+                
+                if not is_on_staff_game:
+                    missing_days = expected_days - assigned_days
+                    if missing_days:
+                        staff_info = df_eligible_staff[df_eligible_staff['staff_id'] == staff_id].iloc[0]
+                        staff_coverage_issues.append({
+                            'week': week_num,
+                            'staff_id': staff_id,
+                            'staff_name': staff_info['staff_name'],
+                            'group_id': staff_info['group_id'],
+                            'role_id': staff_info['role_id'],
+                            'issue': f"Missing assignments on: {', '.join(sorted(missing_days))}"
+                        })
+    
+    if staff_coverage_issues:
+        validation_passed = False
+        print(f"\n⚠️  WARNING: Found {len(staff_coverage_issues)} staff coverage issues:")
+        for issue in staff_coverage_issues[:20]:  # Show first 20
+            role_name = "Counselor" if issue['role_id'] == 1005 else "JC"
+            print(f"   Week {issue['week']}: {issue['staff_name']} (ID: {issue['staff_id']}, {role_name}, Group {issue['group_id']}) - {issue['issue']}")
+        if len(staff_coverage_issues) > 20:
+            print(f"   ... and {len(staff_coverage_issues) - 20} more issues")
+    else:
+        print("✓ All eligible staff are assigned to jobs on all their working days")
+    
+    # ========================================================================
     # Summary
     # ========================================================================
     print("\n" + "="*80)
@@ -4823,21 +4980,24 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                 'fields': 'pixelSize'
             }
         },
-        # Freeze header rows (title + blank + week + day if title exists, otherwise just week + day)
+        # Set default row height to be more compact for better page fit
         {
-            'updateSheetProperties': {
-                'properties': {
+            'updateDimensionProperties': {
+                'range': {
                     'sheetId': sheet_id,
-                    'gridProperties': {
-                        'frozenRowCount': data_start_idx  # Freeze title + headers
-                    }
+                    'dimension': 'ROWS',
+                    'startIndex': data_start_idx,  # Start from data rows
+                    'endIndex': num_rows
                 },
-                'fields': 'gridProperties.frozenRowCount'
+                'properties': {
+                    'pixelSize': 21  # Compact row height for data rows
+                },
+                'fields': 'pixelSize'
             }
         }
     ])
     
-    # Add formatting for section headers (COUNSELORS/JUNIOR COUNSELORS) - Light blue background, BOLD
+    # Add formatting for section headers (COUNSELORS/JUNIOR COUNSELORS) - White background, BOLD
     for row_idx in section_header_rows:
         requests.append({
             'repeatCell': {
@@ -4850,7 +5010,7 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                 },
                 'cell': {
                     'userEnteredFormat': {
-                        'backgroundColor': {'red': 0.85, 'green': 0.92, 'blue': 1.0},  # Lighter blue
+                        'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},
                         'textFormat': {
                             'bold': True,
                             'fontSize': 11
@@ -4878,7 +5038,7 @@ def apply_cell_formatting(service, spreadsheet_id, sheet_name, num_rows, num_col
                 },
                 'cell': {
                     'userEnteredFormat': {
-                        'backgroundColor': {'red': 0.85, 'green': 0.92, 'blue': 1.0}  # Lighter blue
+                        'backgroundColor': {'red': 0.75, 'green': 0.9, 'blue': 1.0}
                     }
                 },
                 'fields': 'userEnteredFormat(backgroundColor)'
@@ -4993,6 +5153,447 @@ def clear_sheet_formatting(service, spreadsheet_id, sheet_name):
         # Don't fail if clearing doesn't work - continue with upload
 
 
+def add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows):
+    """
+    Add the Decathlon Sports Club logo to the bottom-left corner of the sheet.
+    Uses a publicly hosted image URL to avoid Drive API limitations.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab
+    num_rows : int
+        Current number of rows in the sheet (to position logo below content)
+    """
+    import os
+    
+    try:
+        # Get sheet ID
+        sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+        if sheet_id is None:
+            print(f"  Warning: Could not find sheet ID for '{sheet_name}'")
+            return
+        
+        # Use a publicly hosted logo URL
+        # You can replace this with your own hosted logo URL if needed
+        # Options:
+        # 1. Upload to GitHub and use raw URL
+        # 2. Upload to Imgur and use direct link
+        # 3. Upload to Google Drive, make it public, and use the sharing URL
+        # 4. Host on your own web server
+        
+        # Check if custom logo URL is configured
+        logo_url = os.environ.get('DECATHLON_LOGO_URL')
+        
+        if not logo_url:
+            # Try to load from credentials.json
+            base_dir = Path(__file__).resolve().parents[1]
+            creds_file = base_dir / "config" / "credentials.json"
+            
+            try:
+                with open(creds_file, 'r') as f:
+                    creds_data = json.load(f)
+                    logo_url = creds_data.get('logo_url')
+            except:
+                pass
+        
+        if not logo_url:
+            print(f"  ℹ Logo URL not configured. To add logo:")
+            print(f"    1. Upload decathlon_logo.png to a public location (GitHub, Imgur, etc.)")
+            print(f"    2. Add 'logo_url' to credentials.json or set DECATHLON_LOGO_URL environment variable")
+            return
+        
+        # Calculate position to align with legend content (skip blank row)
+        # Legend blank row at num_rows + 1, content starts at num_rows + 2
+        row_position = num_rows + 1  # Start at blank row for cleaner positioning
+        num_rows_to_merge = 5  # Merge 5 rows for logo
+        
+        # Add the image to the sheet and merge cells vertically
+        requests = [
+        # First, merge cells vertically for the logo
+        {
+            'mergeCells': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_position,
+                    'endRowIndex': row_position + num_rows_to_merge,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 1
+                },
+                'mergeType': 'MERGE_ALL'
+            }
+        },
+        # Then add the image to the merged cell
+        {
+            'updateCells': {
+                'rows': [{
+                    'values': [{
+                        'userEnteredValue': {
+                            'formulaValue': f'=IMAGE("{logo_url}", 1)'
+                        },
+                        'userEnteredFormat': {
+                            'verticalAlignment': 'TOP'
+                        }
+                    }]
+                }],
+                'fields': 'userEnteredValue,userEnteredFormat.verticalAlignment',
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_position,
+                    'endRowIndex': row_position + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 1
+                }
+            }
+        }]
+        
+        body = {'requests': requests}
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute()
+        
+        print(f"  ✓ Logo added to bottom-left corner at row {row_position + 1}")
+        
+    except Exception as e:
+        error_msg = str(e)
+        if 'Drive API has not been used' in error_msg or 'accessNotConfigured' in error_msg:
+            print(f"  ⓘ Logo not added: Google Drive API is not enabled")
+            print(f"  To enable it (one-time setup):")
+            print(f"  1. Visit: https://console.developers.google.com/apis/api/drive.googleapis.com")
+            print(f"  2. Select your project and click 'Enable'")
+            print(f"  3. Wait 1-2 minutes and re-run the pipeline")
+        else:
+            print(f"  Warning: Could not add logo to sheet: {e}")
+        # Don't fail the entire process if logo upload fails
+
+
+def add_headers_before_jc_section(service, spreadsheet_id, sheet_name, jc_row_index, num_cols, friday_indices):
+    """
+    Add week and day header rows before the Junior Counselors section.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab
+    jc_row_index : int
+        1-based row index where JC section header is
+    num_cols : int
+        Number of columns in the sheet
+    friday_indices : list
+        List of Friday column indices
+    """
+    try:
+        sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+        
+        # Determine week header content from the first table
+        # Read the week header row from the beginning
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A3:{chr(64 + num_cols)}3"  # Assuming row 3 is week header
+        ).execute()
+        week_header = result.get('values', [[]])[0] if result.get('values') else []
+        
+        # Read the day header row
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A4:{chr(64 + num_cols)}4"  # Assuming row 4 is day header
+        ).execute()
+        day_header = result.get('values', [[]])[0] if result.get('values') else []
+        
+        # Ensure headers have the correct length
+        while len(week_header) < num_cols:
+            week_header.append('')
+        while len(day_header) < num_cols:
+            day_header.append('')
+        
+        # Insert 2 rows for headers before JC section
+        requests = [{
+            'insertDimension': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'dimension': 'ROWS',
+                    'startIndex': jc_row_index - 1,  # 0-based
+                    'endIndex': jc_row_index + 1  # Insert 2 rows
+                },
+                'inheritFromBefore': False
+            }
+        }]
+        
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': requests}
+        ).execute()
+        
+        # Now add the week and day headers
+        values = [week_header, day_header]
+        body = {'values': values}
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A{jc_row_index}",
+            valueInputOption='RAW',
+            body=body
+        ).execute()
+        
+        # Format the headers
+        requests = [
+            # Format week header row - White background, BOLD
+            {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': jc_row_index - 1,
+                        'endRowIndex': jc_row_index,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': num_cols
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},
+                            'textFormat': {
+                                'bold': True,
+                                'fontSize': 10
+                            },
+                            'horizontalAlignment': 'CENTER',
+                            'verticalAlignment': 'MIDDLE'
+                        }
+                    },
+                    'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+                }
+            },
+            # Format day header row - White background, BOLD
+            {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': jc_row_index,
+                        'endRowIndex': jc_row_index + 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': num_cols
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},
+                            'textFormat': {
+                                'bold': True,
+                                'fontSize': 10
+                            },
+                            'horizontalAlignment': 'CENTER',
+                            'verticalAlignment': 'MIDDLE'
+                        }
+                    },
+                    'fields': 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+                }
+            },
+            # Add borders to header rows
+            {
+                'updateBorders': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': jc_row_index - 1,
+                        'endRowIndex': jc_row_index + 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': num_cols
+                    },
+                    'top': {
+                        'style': 'SOLID',
+                        'width': 3,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'bottom': {
+                        'style': 'SOLID',
+                        'width': 1,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'left': {
+                        'style': 'SOLID',
+                        'width': 3,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'right': {
+                        'style': 'SOLID',
+                        'width': 3,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'innerHorizontal': {
+                        'style': 'SOLID',
+                        'width': 1,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'innerVertical': {
+                        'style': 'SOLID',
+                        'width': 1,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    }
+                }
+            }
+        ]
+        
+        # Merge week header cells - merge every 5 columns for each week
+        merge_requests = []
+        col_idx = 1  # Start after staff_name column
+        while col_idx < num_cols:
+            # Check if this column has a week header
+            if col_idx < len(week_header) and week_header[col_idx] and week_header[col_idx].startswith('Week'):
+                # Merge this week's 5 columns (M, T, W, Th, F)
+                end_col = min(col_idx + 5, num_cols)
+                merge_requests.append({
+                    'mergeCells': {
+                        'range': {
+                            'sheetId': sheet_id,
+                            'startRowIndex': jc_row_index - 1,
+                            'endRowIndex': jc_row_index,
+                            'startColumnIndex': col_idx,
+                            'endColumnIndex': end_col
+                        },
+                        'mergeType': 'MERGE_ALL'
+                    }
+                })
+                col_idx += 5  # Move to next week
+            else:
+                col_idx += 1
+        
+        requests.extend(merge_requests)
+        
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': requests}
+        ).execute()
+        
+        print(f"  ✓ Added headers before JC section at row {jc_row_index}")
+        
+    except Exception as e:
+        print(f"  Warning: Could not add headers before JC section: {e}")
+
+
+def find_jc_section_row(service, spreadsheet_id, sheet_name):
+    """
+    Find the row index where Junior Counselors section starts.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab
+        
+    Returns
+    -------
+    int or None
+        1-based row index where "JUNIOR COUNSELORS: MONDAY/WEDNESDAY" appears, or None if not found
+    """
+    try:
+        # Read all values from column A (staff names)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A:A"
+        ).execute()
+        
+        values = result.get('values', [])
+        
+        # Find row with "JUNIOR COUNSELORS: MONDAY/WEDNESDAY"
+        for idx, row in enumerate(values):
+            if row and len(row) > 0:
+                if 'JUNIOR COUNSELORS: MONDAY/WEDNESDAY' in row[0]:
+                    # Return 1-based index
+                    return idx + 1
+        
+        return None
+        
+    except Exception as e:
+        print(f"  Warning: Could not find JC section: {e}")
+        return None
+
+
+def insert_blank_rows(service, spreadsheet_id, sheet_name, start_row, num_blank_rows=15):
+    """
+    Insert blank rows at a specific position for page break.
+    
+    Parameters
+    ----------
+    service : googleapiclient.discovery.Resource
+        Google Sheets API service
+    spreadsheet_id : str
+        The ID of the Google Spreadsheet
+    sheet_name : str
+        The name of the sheet tab
+    start_row : int
+        1-based row index where to insert blank rows
+    num_blank_rows : int
+        Number of blank rows to insert (default: 15)
+    """
+    try:
+        sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+        
+        # Insert blank rows
+        requests = [{
+            'insertDimension': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'dimension': 'ROWS',
+                    'startIndex': start_row - 1,  # Convert to 0-based
+                    'endIndex': start_row - 1 + num_blank_rows
+                },
+                'inheritFromBefore': False
+            }
+        },
+        # Remove background color from blank rows
+        {
+            'updateCells': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': start_row - 1,
+                    'endRowIndex': start_row - 1 + num_blank_rows
+                },
+                'rows': [{
+                    'values': [{
+                        'userEnteredFormat': {
+                            'backgroundColor': {'red': 1, 'green': 1, 'blue': 1}
+                        }
+                    }]
+                }] * num_blank_rows,
+                'fields': 'userEnteredFormat.backgroundColor'
+            }
+        },
+        # Remove all borders from blank rows
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': start_row - 1,
+                    'endRowIndex': start_row - 1 + num_blank_rows
+                },
+                'top': {'style': 'NONE'},
+                'bottom': {'style': 'NONE'},
+                'left': {'style': 'NONE'},
+                'right': {'style': 'NONE'},
+                'innerHorizontal': {'style': 'NONE'},
+                'innerVertical': {'style': 'NONE'}
+            }
+        }]
+        
+        body = {'requests': requests}
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute()
+        
+        print(f"  ✓ Inserted {num_blank_rows} blank rows at row {start_row} for page break")
+        
+    except Exception as e:
+        print(f"  Warning: Could not insert blank rows: {e}")
+
+
 def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Schedule', conn=None, session_number=None, session_year=None):
     """
     Upload CSV to Google Sheets and apply formatting.
@@ -5048,10 +5649,215 @@ def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Sche
         print("Applying color coding...")
         apply_conditional_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols, COLORS)
         
-        # Add job legend below the table
+        # Disable frozen rows for printing
+        print("Configuring print settings...")
+        sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+        if sheet_id:
+            requests = [{
+                'updateSheetProperties': {
+                    'properties': {
+                        'sheetId': sheet_id,
+                        'gridProperties': {
+                            'frozenRowCount': 0,
+                            'frozenColumnCount': 0
+                        }
+                    },
+                    'fields': 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount'
+                }
+            }]
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={'requests': requests}
+            ).execute()
+        
+        # Find Junior Counselors section row BEFORE adding any legends
+        print("Finding Junior Counselors section...")
+        jc_row_index = find_jc_section_row(service, spreadsheet_id, sheet_name)
+        
+        # Save the last counselor row position BEFORE any modifications
+        last_counselor_row_saved = None
+        if jc_row_index:
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=f"{sheet_name}!A1:A{jc_row_index}"
+            ).execute()
+            values = result.get('values', [])
+            
+            for idx in range(len(values) - 1, -1, -1):
+                if idx < len(values) and values[idx] and values[idx][0]:
+                    cell_value = values[idx][0].strip()
+                    if cell_value and 'COUNSELORS:' not in cell_value:
+                        last_counselor_row_saved = idx
+                        print(f"  Saved last Counselor row position: {last_counselor_row_saved + 1} ('{cell_value}')")
+                        break
+        
+        if jc_row_index and conn:
+            print("Adding blank row before first legend...")
+            insert_blank_rows(service, spreadsheet_id, sheet_name, jc_row_index, 1)
+            jc_row_index += 1  # Update JC position
+            
+            # Calculate how many blank rows needed to push JC headers to exactly row 49 (top of page 2)
+            ROWS_PER_PAGE = 48  # Typical rows per printed page (Letter size, default margins)
+            TARGET_HEADER_ROW = ROWS_PER_PAGE + 1  # Row 49 - start of page 2
+            
+            # After we insert blank rows, we'll add 2 header rows BEFORE the JC section
+            # So if JC section is currently at jc_row_index, and we add blank_rows_needed,
+            # then add 2 headers, the headers will be at: jc_row_index + blank_rows_needed
+            # We want that to equal TARGET_HEADER_ROW
+            
+            blank_rows_needed = TARGET_HEADER_ROW - jc_row_index
+            
+            # Ensure we don't add negative rows
+            blank_rows_needed = max(blank_rows_needed, 0)
+            
+            print(f"JC currently at row: {jc_row_index}, Target header row: {TARGET_HEADER_ROW}")
+            print(f"Inserting {blank_rows_needed} blank rows to align JC headers to row {TARGET_HEADER_ROW}...")
+            insert_blank_rows(service, spreadsheet_id, sheet_name, jc_row_index, blank_rows_needed)
+            
+            # Add first job legend in the inserted blank rows (skip first column for logo)
+            print("Adding first job legend (after Counselors)...")
+            # Legend should go at jc_row_index (in the newly inserted blank rows)
+            add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, jc_row_index - 1, num_cols, conn, insert_at_end=False, logo_columns=1)
+            
+            # Add first logo aligned with the legend (one row higher)
+            print("Adding first Decathlon logo...")
+            # Logo goes at same position as legend start
+            add_logo_to_sheet(service, spreadsheet_id, sheet_name, jc_row_index - 2)
+            
+            # Re-find JC row after adding legend and logo
+            jc_row_index = find_jc_section_row(service, spreadsheet_id, sheet_name)
+            
+            # Add week and day headers before JC section
+            print("Adding headers to Junior Counselors table...")
+            add_headers_before_jc_section(service, spreadsheet_id, sheet_name, jc_row_index, num_cols, friday_indices)
+            
+            # Update num_rows to account for inserted rows (1 blank + calculated page break + 2 headers)
+            num_rows += (1 + blank_rows_needed + 2)
+        
+        # Add second job legend below the table (after Junior Counselors)
         if conn:
-            print("Adding job legend...")
-            add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, conn)
+            # No need to add blank row - there's already spacing from the table
+            print("Adding second job legend (after Junior Counselors)...")
+            add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, conn, insert_at_end=True, logo_columns=1)
+            
+            # Add second logo aligned with second legend
+            print("Adding second Decathlon logo...")
+            add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows)
+        
+        # NOW apply thick bottom borders to both tables after everything is in place
+        print("\nApplying table borders...")
+        sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+        
+        # Apply Counselor table border using saved row position
+        if sheet_id and last_counselor_row_saved is not None:
+            print(f"  Applying thick border to Counselor table at row {last_counselor_row_saved + 1}")
+            requests = [{
+                'updateBorders': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': last_counselor_row_saved,
+                        'endRowIndex': last_counselor_row_saved + 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': num_cols
+                    },
+                    'bottom': {
+                        'style': 'SOLID',
+                        'width': 3,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'left': {
+                        'style': 'SOLID',
+                        'width': 3,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    },
+                    'right': {
+                        'style': 'SOLID',
+                        'width': 3,
+                        'color': {'red': 0, 'green': 0, 'blue': 0}
+                    }
+                }
+            }]
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={'requests': requests}
+            ).execute()
+            print(f"  ✓ Applied Counselor table border")
+        
+        # Apply JC table border
+        print("  Applying JC table border...")
+        sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+        if sheet_id and jc_row_index:
+            # Read all data to find last JC row
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=f"{sheet_name}!A1:A1000"
+            ).execute()
+            values = result.get('values', [])
+            
+            # Find JC section
+            jc_start = None
+            for idx, row in enumerate(values):
+                if not row or not row[0]:
+                    continue
+                cell_value = row[0].strip()
+                if 'JUNIOR COUNSELORS:' in cell_value:
+                    jc_start = idx
+                    break
+            
+            if jc_start is not None:
+                # Search backwards from end to find last JC
+                last_jc_row = None
+                for idx in range(len(values) - 1, jc_start, -1):
+                    if idx >= len(values):
+                        continue
+                    row = values[idx]
+                    if not row or not row[0]:
+                        continue
+                    cell_value = row[0].strip()
+                    if not cell_value:
+                        continue
+                    # Skip section headers and legend items
+                    if 'COUNSELORS:' in cell_value or 'JUNIOR COUNSELORS:' in cell_value:
+                        continue
+                    if ' - ' in cell_value:
+                        parts = cell_value.split(' - ', 1)
+                        if len(parts) == 2 and len(parts[0]) <= 10 and parts[0].replace(' ', '').isupper():
+                            continue
+                    last_jc_row = idx
+                    break
+                
+                if last_jc_row is not None:
+                    print(f"  ✓ Applying thick border to JC table at row {last_jc_row + 1}")
+                    requests = [{
+                        'updateBorders': {
+                            'range': {
+                                'sheetId': sheet_id,
+                                'startRowIndex': last_jc_row,
+                                'endRowIndex': last_jc_row + 1,
+                                'startColumnIndex': 0,
+                                'endColumnIndex': num_cols
+                            },
+                            'bottom': {
+                                'style': 'SOLID',
+                                'width': 3,
+                                'color': {'red': 0, 'green': 0, 'blue': 0}
+                            },
+                            'left': {
+                                'style': 'SOLID',
+                                'width': 3,
+                                'color': {'red': 0, 'green': 0, 'blue': 0}
+                            },
+                            'right': {
+                                'style': 'SOLID',
+                                'width': 3,
+                                'color': {'red': 0, 'green': 0, 'blue': 0}
+                            }
+                        }
+                    }]
+                    service.spreadsheets().batchUpdate(
+                        spreadsheetId=spreadsheet_id,
+                        body={'requests': requests}
+                    ).execute()
         
         print("\n✓ Successfully formatted Google Sheet!")
         print(f"View your sheet: https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
@@ -5063,7 +5869,7 @@ def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Sche
         return False
 
 
-def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, conn):
+def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, conn, insert_at_end=True, logo_columns=1):
     """
     Add job code legend below the table in Google Sheets.
     
@@ -5076,11 +5882,15 @@ def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_c
     sheet_name : str
         The name of the sheet tab
     num_rows : int
-        Current number of rows in the sheet
+        Current number of rows in the sheet (or insertion point if insert_at_end=False)
     num_cols : int
         Number of columns in the sheet
     conn : connection
         Database connection for querying job names
+    insert_at_end : bool, optional
+        If True (default), append legend after num_rows. If False, insert legend at num_rows.
+    logo_columns : int, optional
+        Number of columns to skip for the logo (default: 1). Use 0 for no logo.
     """
     import pandas as pd
     
@@ -5101,40 +5911,67 @@ def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_c
     
     print(f"  Found {len(job_legend)} jobs for legend")
     
-    # Create legend rows - 6 items per row to fit on page
+    # Create legend rows - 6 items per row, with 3 longest entries in their own row at bottom
+    # Sort items by text length to identify longest entries
     legend_items = list(job_legend.items())
-    items_per_row = 6
-    num_legend_rows = (len(legend_items) + items_per_row - 1) // items_per_row
+    legend_items_sorted = sorted(legend_items, key=lambda x: len(f'{x[0]} - {x[1]}'))
     
-    # Calculate column positions for centering (use same positions for all rows)
-    # We have num_cols total, skip first column (staff_name), distribute 6 items across remaining
-    usable_cols = num_cols - 1
+    # Separate the 3 longest items for the bottom row
+    longest_items = legend_items_sorted[-3:] if len(legend_items_sorted) >= 3 else []
+    regular_items = legend_items_sorted[:-3] if len(legend_items_sorted) >= 3 else legend_items_sorted
+    
+    items_per_row = 6
+    num_regular_rows = (len(regular_items) + items_per_row - 1) // items_per_row if regular_items else 0
+    
+    # Calculate column positions starting after the logo
+    # We have num_cols total, distribute 6 items starting from column C (skip logo column + 1)
+    usable_cols = num_cols - logo_columns - 1
     spacing = usable_cols // items_per_row
-    start_col = 1 + (usable_cols - (items_per_row - 1) * spacing) // 2
+    start_col = logo_columns + 1  # Start at column C (skip logo in column A, and column B)
     col_positions = [start_col + (i * spacing) for i in range(items_per_row)]
     
     legend_data = []
-    for row_num in range(num_legend_rows):
+    
+    # Create rows for regular items (shorter entries)
+    for row_num in range(num_regular_rows):
         row_data = [''] * num_cols
         
         # Fill this row with up to 6 legend items
         start_idx = row_num * items_per_row
-        end_idx = min(start_idx + items_per_row, len(legend_items))
+        end_idx = min(start_idx + items_per_row, len(regular_items))
         
         # Use the same column positions for all rows (aligned left-to-right)
         for item_idx, legend_idx in enumerate(range(start_idx, end_idx)):
-            code, name = legend_items[legend_idx]
+            code, name = regular_items[legend_idx]
             col_position = col_positions[item_idx]
             if col_position < num_cols:
                 row_data[col_position] = f'{code} - {name}'
         
         legend_data.append(row_data)
     
+    # Create bottom row for 3 longest items, spaced out (every other column)
+    if longest_items:
+        row_data = [''] * num_cols
+        # Place items at positions 0, 2, 4 (every other position) to give them more space
+        spaced_positions = [col_positions[0], col_positions[2], col_positions[4]]
+        
+        for item_idx, (code, name) in enumerate(longest_items):
+            if item_idx < len(spaced_positions):
+                col_position = spaced_positions[item_idx]
+                if col_position < num_cols:
+                    row_data[col_position] = f'{code} - {name}'
+        
+        legend_data.append(row_data)
+    
     # Add blank row before legend
     legend_data.insert(0, [''] * num_cols)
     
-    # Append legend data below the table
-    start_row = num_rows + 1  # +1 to skip one row after the table
+    # Calculate start row based on insertion mode
+    if insert_at_end:
+        start_row = num_rows + 1  # +1 to skip one row after the table
+    else:
+        start_row = num_rows  # Insert at the specified row (blank rows already inserted)
+    
     range_name = f"{sheet_name}!A{start_row}"
     
     body = {'values': legend_data}
@@ -5150,7 +5987,7 @@ def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_c
     # Remove gridlines from legend area only (keep table borders intact)
     sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
     if sheet_id is not None:
-        # First, remove all borders from legend rows
+        # First, remove all borders from legend rows and enable text wrapping
         requests = [{
             'updateBorders': {
                 'range': {
@@ -5168,7 +6005,7 @@ def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_c
                 'innerVertical': {'style': 'NONE'}
             }
         },
-        # Make legend text bold
+        # Make legend text bold and left-aligned (no centering, no merging)
         {
             'repeatCell': {
                 'range': {
@@ -5183,27 +6020,12 @@ def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_c
                         'textFormat': {
                             'bold': True,
                             'fontSize': 9
-                        }
+                        },
+                        'horizontalAlignment': 'LEFT',
+                        'verticalAlignment': 'MIDDLE'
                     }
                 },
-                'fields': 'userEnteredFormat(textFormat)'
-            }
-        },
-        # FINALLY, restore the thick bottom border of the last table row (must be last to not get overridden)
-        {
-            'updateBorders': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'startRowIndex': num_rows - 1,  # Last row of table (0-indexed)
-                    'endRowIndex': num_rows,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': num_cols
-                },
-                'bottom': {
-                    'style': 'SOLID',
-                    'width': 3,
-                    'color': {'red': 0, 'green': 0, 'blue': 0}
-                }
+                'fields': 'userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)'
             }
         }]
         
@@ -5213,7 +6035,7 @@ def add_job_legend_to_sheet(service, spreadsheet_id, sheet_name, num_rows, num_c
             body=body
         ).execute()
         
-        print(f"  Removed gridlines from legend area and restored thick bottom border")
+        print(f"  Removed gridlines from legend area")
 
 
 

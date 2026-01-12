@@ -830,15 +830,25 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=Non
     df = pd.read_csv(csv_file)
     df = df.fillna('')
     
-    # Get session info from database if session_id is provided
+    # Get session info from Supabase database if session_id is provided
+    # Note: camp.session table is in the external Supabase database, not Replit's database
     session_number = None
     session_year = None
     if session_id:
         try:
             from Decathlon_Automation_Core.connections import db_connections as dbc
-            # Load credentials - check for Replit env vars first (PGDATABASE), then POSTGRES_*, then credentials.json
-            if 'PGDATABASE' in os.environ:
-                # Use Replit environment variables
+            # Use Supabase credentials for camp.session table
+            if 'SUPABASE_DB_HOST' in os.environ:
+                # Use Supabase environment variables
+                creds = {
+                    'db_name': 'postgres',
+                    'user': os.environ.get('SUPABASE_DB_USER', 'postgres'),
+                    'password': os.environ.get('SUPABASE_DB_PASSWORD'),
+                    'host': os.environ.get('SUPABASE_DB_HOST'),
+                    'port': '5432'
+                }
+            elif 'PGDATABASE' in os.environ:
+                # Fallback to Replit environment variables
                 creds = {
                     'db_name': os.environ.get('PGDATABASE'),
                     'user': os.environ.get('PGUSER'),

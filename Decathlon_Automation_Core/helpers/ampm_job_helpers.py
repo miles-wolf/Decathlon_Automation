@@ -921,18 +921,22 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=Non
                 }
             ]
             try:
-                service.spreadsheets().batchUpdate(
+                result = service.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id,
                     body={'requests': clear_requests}
                 ).execute()
-            except:
+                print(f"  Cleared existing formatting and merges")
+            except Exception as e:
                 # If unmerge fails, it's fine - no cells were merged
+                print(f"  Note: No existing merges to clear")
                 pass
-    except HttpError:
+    except HttpError as e:
         # Sheet might not exist, create it
+        print(f"  Creating new sheet tab: {sheet_name}")
         _create_sheet(service, spreadsheet_id, sheet_name)
     
     # Upload data
+    print(f"  Uploading {len(values)} rows of data...")
     body = {'values': values}
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
@@ -1538,10 +1542,24 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
         }
     
     body = {'requests': requests}
-    result = service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body=body
-    ).execute()
+    
+    # Split into smaller batches to avoid API limits
+    # Google Sheets API recommends max 100 requests per batchUpdate
+    BATCH_SIZE = 50
+    all_requests = requests
+    
+    for i in range(0, len(all_requests), BATCH_SIZE):
+        batch = all_requests[i:i + BATCH_SIZE]
+        batch_body = {'requests': batch}
+        try:
+            result = service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body=batch_body
+            ).execute()
+            print(f"  Applied formatting batch {i//BATCH_SIZE + 1} ({len(batch)} requests)")
+        except Exception as e:
+            print(f"  Warning: Batch {i//BATCH_SIZE + 1} failed: {e}")
+            # Continue with next batch even if this one fails
     
     # Set print repeat rows separately (this controls what shows on each printed page)
     if has_title:

@@ -5649,16 +5649,19 @@ def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Sche
         print("Applying color coding...")
         apply_conditional_formatting(service, spreadsheet_id, sheet_name, num_rows, num_cols, COLORS)
         
-        # Disable frozen rows for printing
+        # Configure frozen rows for printing to repeat title and blank row on all pages
         print("Configuring print settings...")
         sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
         if sheet_id:
+            # Freeze title row (row 0) and blank row (row 1) so they repeat on all pages
+            # Week and day headers are NOT frozen because they're already duplicated in the data
+            frozen_row_count = 2 if session_number else 0  # Title + blank row
             requests = [{
                 'updateSheetProperties': {
                     'properties': {
                         'sheetId': sheet_id,
                         'gridProperties': {
-                            'frozenRowCount': 0,
+                            'frozenRowCount': frozen_row_count,
                             'frozenColumnCount': 0
                         }
                     },
@@ -5669,6 +5672,7 @@ def format_google_sheet(csv_file, spreadsheet_id, sheet_name='Lunchtime Job Sche
                 spreadsheetId=spreadsheet_id,
                 body={'requests': requests}
             ).execute()
+            print(f"  ✓ Set {frozen_row_count} frozen rows (title + blank) to repeat on all pages")
         
         # Find Junior Counselors section row BEFORE adding any legends
         print("Finding Junior Counselors section...")

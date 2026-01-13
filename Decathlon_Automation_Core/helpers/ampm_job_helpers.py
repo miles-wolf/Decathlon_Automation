@@ -836,7 +836,14 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=Non
     session_year = None
     if session_id:
         try:
-            from Decathlon_Automation_Core.connections import db_connections as dbc
+            # Import using relative path from current module
+            import sys
+            from pathlib import Path as ImportPath
+            helper_dir = ImportPath(__file__).resolve().parent
+            core_dir = helper_dir.parent
+            if str(core_dir) not in sys.path:
+                sys.path.insert(0, str(core_dir))
+            from connections import db_connections as dbc
             # Use Supabase credentials for camp.session table
             if 'SUPABASE_DB_HOST' in os.environ:
                 # Use Supabase environment variables
@@ -899,6 +906,10 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=Non
             print(f"Warning: Could not retrieve session info: {e}")
     
     # Build title header if session_number is provided
+    print(f"DEBUG: session_id parameter = {session_id}")
+    print(f"DEBUG: session_number retrieved = {session_number}")
+    print(f"DEBUG: session_year retrieved = {session_year}")
+    
     title_rows = []
     if session_number:
         if session_year:
@@ -907,12 +918,17 @@ def upload_to_google_sheets(csv_file, spreadsheet_id, sheet_name, session_id=Non
             title_text = f"AM/PM Job Assignments - Session {session_number}"
         # Title row with text in first column, rest empty
         title_row = [title_text] + [''] * (len(df.columns) - 1)
-        # Blank row after title
-        blank_row = [''] * len(df.columns)
-        title_rows = [title_row, blank_row]
+        # No blank row - title goes directly to header
+        title_rows = [title_row]
     
     # Convert DataFrame to list of lists for Google Sheets API
     values = title_rows + [df.columns.tolist()] + df.values.tolist()
+    
+    print(f"DEBUG: title_rows count = {len(title_rows)}")
+    print(f"DEBUG: total values rows = {len(values)}")
+    print(f"DEBUG: has_title_rows flag = {len(title_rows) > 0}")
+    if len(title_rows) > 0:
+        print(f"DEBUG: First row (title) = {values[0][0] if len(values) > 0 and len(values[0]) > 0 else 'EMPTY'}")
     
     # Pass flag to formatting function to indicate if title is present
     has_title_rows = len(title_rows) > 0
@@ -1054,7 +1070,10 @@ def add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows):
             return
         
         # Calculate position (bottom-left corner, below the table)
-        row_position = num_rows + 1
+        # num_rows is the total count of data rows (0-indexed: 0 to num_rows-1 are data rows)
+        # Leave one blank spacing row (index num_rows), then start logo at num_rows + 1
+        spacing_row_idx = num_rows  # First row after table data
+        row_position = num_rows + 1  # Logo starts after spacing row
         num_rows_to_merge = 5  # Merge 5 rows for logo (matches lunchtime jobs)
         
         # First, try to unmerge any existing merges in the logo area to avoid conflicts
@@ -1080,6 +1099,39 @@ def add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows):
         
         # Add the image to the sheet and merge cells vertically
         requests = [
+        # Set spacing row height to normal size (35px)
+        {
+            'updateDimensionProperties': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'dimension': 'ROWS',
+                    'startIndex': spacing_row_idx,
+                    'endIndex': spacing_row_idx + 1
+                },
+                'properties': {
+                    'pixelSize': 35
+                },
+                'fields': 'pixelSize'
+            }
+        },
+        # Clear borders in spacing row to avoid gridlines
+        # NOTE: Do NOT clear 'top' border as that would remove the table's bottom border
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': spacing_row_idx,
+                    'endRowIndex': spacing_row_idx + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 10
+                },
+                'bottom': {'style': 'NONE'},
+                'left': {'style': 'NONE'},
+                'right': {'style': 'NONE'},
+                'innerHorizontal': {'style': 'NONE'},
+                'innerVertical': {'style': 'NONE'}
+            }
+        },
         # First, merge cells vertically for the logo
         {
             'mergeCells': {
@@ -1114,6 +1166,39 @@ def add_logo_to_sheet(service, spreadsheet_id, sheet_name, num_rows):
                     'startColumnIndex': 0,
                     'endColumnIndex': 1
                 }
+            }
+        },
+        # Set the logo rows to a reasonable height (35px each)
+        {
+            'updateDimensionProperties': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'dimension': 'ROWS',
+                    'startIndex': row_position,
+                    'endIndex': row_position + num_rows_to_merge
+                },
+                'properties': {
+                    'pixelSize': 35
+                },
+                'fields': 'pixelSize'
+            }
+        },
+        # Clear any borders in the logo area to avoid gridlines
+        # NOTE: Do NOT clear 'top' border as that would remove the table's bottom border
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': row_position,
+                    'endRowIndex': row_position + num_rows_to_merge,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 10
+                },
+                'bottom': {'style': 'NONE'},
+                'left': {'style': 'NONE'},
+                'right': {'style': 'NONE'},
+                'innerHorizontal': {'style': 'NONE'},
+                'innerVertical': {'style': 'NONE'}
             }
         }]
         
@@ -1158,15 +1243,21 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
     values : list
         The actual data values to analyze for dynamic row sizing
     """
+    print(f"DEBUG _format: num_rows={num_rows}, has_title={has_title}", flush=True)
+    
     sheet_id = _get_sheet_id(service, spreadsheet_id, sheet_name)
     
     if sheet_id is None:
+        print(f"DEBUG _format: sheet_id is None, returning early!", flush=True)
         return
     
     # Determine row indices based on whether title is present
-    title_rows = 2 if has_title else 0
+    title_rows = 1 if has_title else 0
     header_row_idx = title_rows
     data_start_idx = header_row_idx + 1
+    
+    print(f"DEBUG _format: title_rows={title_rows}, header_row_idx={header_row_idx}, data_start_idx={data_start_idx}", flush=True)
+    print(f"DEBUG _format: Border range will be from row {header_row_idx} to row {num_rows - 1}", flush=True)
     
     # Calculate optimal data row height to fit on 2 pages (max)
     # Actual page height appears to be larger than initially calculated
@@ -1175,7 +1266,7 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
     
     # Fixed heights
     title_height = 60 if has_title else 0
-    blank_height = 21 if has_title else 0
+    blank_height = 0  # No blank row anymore
     header_height = 40
     
     # Use 30px rows as base (allows descriptions to display without cutting off)
@@ -1231,7 +1322,7 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
     
     # Set row heights depending on whether title is present
     if has_title:
-        # Title row height (calculated for 2-page fit)
+        # Title row height
         requests.append({
             'updateDimensionProperties': {
                 'range': {
@@ -1242,21 +1333,6 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
                 },
                 'properties': {
                     'pixelSize': title_height
-                },
-                'fields': 'pixelSize'
-            }
-        })
-        # Blank row after title (calculated for 2-page fit)
-        requests.append({
-            'updateDimensionProperties': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'dimension': 'ROWS',
-                    'startIndex': 1,
-                    'endIndex': 2
-                },
-                'properties': {
-                    'pixelSize': blank_height
                 },
                 'fields': 'pixelSize'
             }
@@ -1285,6 +1361,13 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
     CHAR_WIDTH_PX = 8  # More conservative to account for word breaks
     COLUMN_WIDTHS = [180, 220, 1200]  # Staff Name, Job, Instructions
     
+    # Track row heights and page breaks for thick borders
+    row_heights = {}
+    # Google Sheets actual printing dimensions (empirically determined)
+    # All pages have the same usable height
+    FIRST_PAGE_HEIGHT_PX = 1165  # Average of what worked (1150 + 1180) / 2
+    SUBSEQUENT_PAGE_HEIGHT_PX = 1165  # Same for all pages
+    
     # Set individual row heights for data rows based on content
     for i in range(data_start_idx, num_rows):
         if i < len(values):
@@ -1307,6 +1390,7 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
             # Calculate row height: 1 line=30px, 2 lines=50px, 3 lines=70px
             # Formula: 10 + lines_needed * 20
             row_height = 10 + (max_lines * 20)
+            row_heights[i] = row_height
             
             # Set this row's height
             requests.append({
@@ -1323,6 +1407,43 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
                     'fields': 'pixelSize'
                 }
             })
+    
+    # Calculate which rows will be at the bottom of each printed page
+    page_break_rows = []
+    current_page_height = 0
+    is_first_page = True
+    
+    # All pages have the same overhead (title + blank + header all repeat because they're frozen)
+    if has_title:
+        frozen_rows_height = title_height + blank_height + header_height
+        current_page_height = frozen_rows_height
+        print(f"DEBUG: Frozen rows repeat on each page: title ({title_height}px) + blank ({blank_height}px) + header ({header_height}px) = {frozen_rows_height}px", flush=True)
+    else:
+        frozen_rows_height = header_height
+        current_page_height = header_height
+        print(f"DEBUG: Frozen rows: header ({header_height}px)", flush=True)
+    
+    print(f"DEBUG: First page height = {FIRST_PAGE_HEIGHT_PX}px, Subsequent pages = {SUBSEQUENT_PAGE_HEIGHT_PX}px", flush=True)
+    
+    for i in range(data_start_idx, num_rows):
+        if i in row_heights:
+            # Use different page height limits for first vs subsequent pages
+            page_limit = FIRST_PAGE_HEIGHT_PX if is_first_page else SUBSEQUENT_PAGE_HEIGHT_PX
+            
+            # Check if adding this row would exceed page height
+            if current_page_height + row_heights[i] > page_limit:
+                # Previous row was last on the page
+                if i - 1 >= data_start_idx:
+                    page_break_rows.append(i - 1)
+                    print(f"DEBUG: Page break BEFORE row {i} (after row {i-1}). Current height: {current_page_height}px, next row would add {row_heights[i]}px, limit: {page_limit}px", flush=True)
+                # Reset for next page - all frozen rows repeat on each page
+                current_page_height = frozen_rows_height + row_heights[i]
+                is_first_page = False
+            else:
+                current_page_height += row_heights[i]
+    
+    print(f"DEBUG: Final accumulated height: {current_page_height}px", flush=True)
+    print(f"DEBUG: Page break rows (thick bottom border): {page_break_rows}", flush=True)
     
     # Format title row if present
     if has_title:
@@ -1367,26 +1488,6 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
             }
         }
         requests.append(merge_title)
-        
-        # Ensure blank row (row 1) has white background and is not formatted like header
-        blank_row_format = {
-            'repeatCell': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'startRowIndex': 1,
-                    'endRowIndex': 2,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': num_cols
-                },
-                'cell': {
-                    'userEnteredFormat': {
-                        'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0}
-                    }
-                },
-                'fields': 'userEnteredFormat.backgroundColor'
-            }
-        }
-        requests.append(blank_row_format)
     
     # Format header row (matching lunchtime jobs blue: RGB 0.75, 0.9, 1.0)
     header_format = {
@@ -1427,6 +1528,7 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
             },
             'cell': {
                 'userEnteredFormat': {
+                    'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},  # Explicitly set white background
                     'textFormat': {
                         'fontSize': 12
                     },
@@ -1434,88 +1536,10 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
                     'wrapStrategy': 'WRAP'
                 }
             },
-            'fields': 'userEnteredFormat(textFormat,verticalAlignment,wrapStrategy)'
+            'fields': 'userEnteredFormat(backgroundColor,textFormat,verticalAlignment,wrapStrategy)'
         }
     }
     requests.append(data_format)
-    
-    # Add thin borders (1px) to all cells in table including inner borders
-    thin_borders = {
-        'updateBorders': {
-            'range': {
-                'sheetId': sheet_id,
-                'startRowIndex': header_row_idx,
-                'endRowIndex': num_rows,
-                'startColumnIndex': 0,
-                'endColumnIndex': num_cols
-            },
-            'top': {
-                'style': 'SOLID',
-                'width': 1,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'bottom': {
-                'style': 'SOLID',
-                'width': 1,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'left': {
-                'style': 'SOLID',
-                'width': 1,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'right': {
-                'style': 'SOLID',
-                'width': 1,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'innerHorizontal': {
-                'style': 'SOLID',
-                'width': 1,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'innerVertical': {
-                'style': 'SOLID',
-                'width': 1,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            }
-        }
-    }
-    requests.append(thin_borders)
-    
-    # Add thick outer border (3px) around the table
-    thick_outer_border = {
-        'updateBorders': {
-            'range': {
-                'sheetId': sheet_id,
-                'startRowIndex': header_row_idx,
-                'endRowIndex': num_rows,
-                'startColumnIndex': 0,
-                'endColumnIndex': num_cols
-            },
-            'top': {
-                'style': 'SOLID',
-                'width': 3,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'bottom': {
-                'style': 'SOLID',
-                'width': 3,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'left': {
-                'style': 'SOLID',
-                'width': 3,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            },
-            'right': {
-                'style': 'SOLID',
-                'width': 3,
-                'color': {'red': 0, 'green': 0, 'blue': 0}
-            }
-        }
-    }
-    requests.append(thick_outer_border)
     
     # Freeze header row only (not title rows)
     freeze_row = {
@@ -1604,6 +1628,149 @@ def _format_ampm_sheet(service, spreadsheet_id, sheet_name, num_rows, num_cols, 
             ).execute()
         except Exception as e:
             print(f"  Note: Could not set print repeat rows: {e}")
+    
+    # Apply borders LAST as a separate batch to ensure they don't get overwritten
+    # This is critical - borders must be applied after all other formatting
+    border_requests = [
+        # Add thin borders (1px) to all cells in table including inner borders
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': header_row_idx,
+                    'endRowIndex': num_rows,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'top': {
+                    'style': 'SOLID',
+                    'width': 1,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'bottom': {
+                    'style': 'SOLID',
+                    'width': 1,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'left': {
+                    'style': 'SOLID',
+                    'width': 1,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'right': {
+                    'style': 'SOLID',
+                    'width': 1,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'innerHorizontal': {
+                    'style': 'SOLID',
+                    'width': 1,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'innerVertical': {
+                    'style': 'SOLID',
+                    'width': 1,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                }
+            }
+        },
+        # Add thick outer border (3px) around the table - applied AFTER thin borders
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': header_row_idx,
+                    'endRowIndex': num_rows,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'top': {
+                    'style': 'SOLID',
+                    'width': 3,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'bottom': {
+                    'style': 'SOLID',
+                    'width': 3,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'left': {
+                    'style': 'SOLID',
+                    'width': 3,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                },
+                'right': {
+                    'style': 'SOLID',
+                    'width': 3,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                }
+            }
+        },
+        # Add thick bottom border to header row so it appears on every printed page
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': header_row_idx,
+                    'endRowIndex': header_row_idx + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'bottom': {
+                    'style': 'SOLID',
+                    'width': 3,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                }
+            }
+        },
+        # Clear borders beyond the table
+        {
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': num_rows,
+                    'endRowIndex': num_rows + 20,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'bottom': {'style': 'NONE'},
+                'left': {'style': 'NONE'},
+                'right': {'style': 'NONE'},
+                'innerHorizontal': {'style': 'NONE'},
+                'innerVertical': {'style': 'NONE'}
+            }
+        }
+    ]
+    
+    # Add thick bottom borders to rows at estimated page breaks
+    for page_break_row in page_break_rows:
+        border_requests.append({
+            'updateBorders': {
+                'range': {
+                    'sheetId': sheet_id,
+                    'startRowIndex': page_break_row,
+                    'endRowIndex': page_break_row + 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': num_cols
+                },
+                'bottom': {
+                    'style': 'SOLID',
+                    'width': 3,
+                    'color': {'red': 0, 'green': 0, 'blue': 0}
+                }
+            }
+        })
+    
+    # Apply border requests in a final separate batch
+    try:
+        border_body = {'requests': border_requests}
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=border_body
+        ).execute()
+        print(f"  ✓ Applied table borders (final step)")
+    except Exception as e:
+        print(f"  Warning: Could not apply borders: {e}")
     
     # Add logo to bottom-left corner
     print("  Adding Decathlon logo...")
